@@ -16,10 +16,10 @@ import { useState } from 'react';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Airlines', href: '/airlines', icon: Plane },
-  { name: 'Users', href: '/users', icon: Users },
-  { name: 'Manuals', href: '/manuals', icon: BookOpen },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Airlines', href: '/dashboard/airlines', icon: Plane },
+  { name: 'Users', href: '/dashboard/users', icon: Users },
+  { name: 'Manuals', href: '/dashboard/manuals', icon: BookOpen },
+  { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
 export default function DashboardLayout({

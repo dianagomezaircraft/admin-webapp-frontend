@@ -7,7 +7,7 @@ import { ArrowLeft } from 'lucide-react';
 export default function EditAirlinePage({ params }: { params: { id: string } }) {
   return (
     <div className="max-w-2xl space-y-6">
-      <Link href="/airlines" className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900">
+      <Link href="/dashboard/airlines" className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900">
         <ArrowLeft className="w-4 h-4 mr-2" />
         Back to Airlines
       </Link>

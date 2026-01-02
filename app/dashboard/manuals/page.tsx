@@ -16,7 +16,7 @@ export default function ManualsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Manual Chapters</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Manual Chapters TESTING</h2>
           <p className="text-gray-600 mt-1">Manage training and operational manuals</p>
         </div>
         <Link href="/manuals/new">

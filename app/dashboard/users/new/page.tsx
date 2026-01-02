@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/Input';
 export default function NewUserPage() {
   return (
     <div className="max-w-2xl space-y-6">
-      <Link href="/users" className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900">
+      <Link href="/dashboard/users" className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900">
         <ArrowLeft className="w-4 h-4 mr-2" />
         Back to Users
       </Link>
@@ -83,7 +83,7 @@ export default function NewUserPage() {
 
             <div className="flex space-x-3 pt-4">
               <Button type="submit">Create User</Button>
-              <Link href="/users">
+              <Link href="/dashboard/users">
                 <Button type="button" variant="ghost">Cancel</Button>
               </Link>
             </div>
