@@ -1,10 +1,36 @@
+'use client';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ArrowLeft } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { airlinesService, type Airline } from '@/lib/airlines';
 
 export default function EditAirlinePage({ params }: { params: { id: string } }) {
+  const [airline, setAirline] = useState<Airline>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+
+  useEffect(() => {
+    loadAirline();
+  }, []);
+
+  const loadAirline = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await airlinesService.getById(params.id);
+      setAirline(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load airline');
+      console.error('Error loading airline:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-2xl space-y-6">
       <Link href="/dashboard/airlines" className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900">

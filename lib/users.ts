@@ -10,15 +10,15 @@ export interface User {
   lastName: string;
   role: 'SUPER_ADMIN' | 'ADMIN' | 'EDITOR' | 'VIEWER';
   active: boolean;
-  airlineId: string;
+  airlineId: string | null;
   airline: {
     id: string;
     name: string;
     code: string;
   };
-  createdAt: string;
-  updatedAt: string;
-  lastLogin: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  lastLogin?: string | null;
 }
 
 export interface UsersResponse {
