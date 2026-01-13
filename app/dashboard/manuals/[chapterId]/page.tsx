@@ -1,9 +1,12 @@
+'use client';
+
 import { ArrowLeft } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Plus, BookOpen, ChevronRight } from 'lucide-react';
+import { use, useEffect, useState } from 'react';
 
 const sections = [
   { id: '1', title: 'Pre-Flight Safety Check', contents: 5, order: 1 },
@@ -12,12 +15,18 @@ const sections = [
   { id: '4', title: 'Post-Flight Review', contents: 4, order: 4 },
 ];
 
-export default function ChapterPage({ params }: { params: { chapterId: string } }) {
+export default function ChapterPage({ 
+  params 
+}: { 
+  params: Promise<{ chapterId: string }> 
+  }) {
+  const unwrappedParams = use(params);
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center space-x-2 text-sm">
-        <Link href="/manuals" className="text-gray-600 hover:text-gray-900">
+        <Link href="/dashboard/manuals" className="text-gray-600 hover:text-gray-900">
           Chapters
         </Link>
         <ChevronRight className="w-4 h-4 text-gray-400" />
@@ -42,7 +51,7 @@ export default function ChapterPage({ params }: { params: { chapterId: string } 
       {/* Sections List */}
       <div className="space-y-3">
         {sections.map((section) => (
-          <Link key={section.id} href={`/manuals/${params.chapterId}/${section.id}`}>
+          <Link key={section.id} href={`/dashboard/manuals/${unwrappedParams.chapterId}/${section.id}`}>
             <Card className="hover:shadow-md transition-shadow cursor-pointer">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">

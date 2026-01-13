@@ -19,7 +19,7 @@ export default function ManualsPage() {
           <h2 className="text-2xl font-bold text-gray-900">Manual Chapters TESTING</h2>
           <p className="text-gray-600 mt-1">Manage training and operational manuals</p>
         </div>
-        <Link href="/manuals/new">
+        <Link href="/dashboard/manuals/new">
           <Button>
             <Plus className="w-4 h-4 mr-2" />
             Add Chapter
@@ -30,7 +30,7 @@ export default function ManualsPage() {
       {/* Chapters List */}
       <div className="space-y-3">
         {chapters.map((chapter) => (
-          <Link key={chapter.id} href={`/manuals/${chapter.id}`}>
+          <Link key={chapter.id} href={`/dashboard/manuals/${chapter.id}`}>
             <Card className="hover:shadow-md transition-shadow cursor-pointer">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">

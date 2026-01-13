@@ -33,11 +33,11 @@ export default function SectionPage({
     <div className="space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center space-x-2 text-sm">
-        <Link href="/manuals" className="text-gray-600 hover:text-gray-900">
+        <Link href="/dashboard/manuals" className="text-gray-600 hover:text-gray-900">
           Chapters
         </Link>
         <ChevronRight className="w-4 h-4 text-gray-400" />
-        <Link href={`/manuals/${params.chapterId}`} className="text-gray-600 hover:text-gray-900">
+        <Link href={`/dashboard/manuals/${params.chapterId}`} className="text-gray-600 hover:text-gray-900">
           Safety Procedures
         </Link>
         <ChevronRight className="w-4 h-4 text-gray-400" />
