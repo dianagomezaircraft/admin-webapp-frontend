@@ -17,6 +17,7 @@ export interface AuthResponse {
       firstName: string;
       lastName: string;
       role: string;
+      airlineId?: string;
     };
   };
 }
@@ -55,15 +56,38 @@ export const authService = {
     return response.json();
   },
 
-  logout() {
+  async logout(refreshToken?: string): Promise<void> {
+    // Call backend logout endpoint if refresh token is provided
+    if (refreshToken) {
+      try {
+        await fetch(`${API_URL}/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch (error) {
+        console.error('Backend logout error:', error);
+        // Continue with local logout even if API call fails
+      }
+    }
+
+    // Clear local storage
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    
+    // Clear cookies
     document.cookie = 'accessToken=; max-age=0; path=/';
   },
 
   getAccessToken(): string | null {
     return localStorage.getItem('accessToken');
+  },
+
+  getRefreshToken(): string | null {
+    return localStorage.getItem('refreshToken');
   },
 
   getUser() {
@@ -73,6 +97,12 @@ export const authService = {
 
   isAuthenticated(): boolean {
     return !!this.getAccessToken();
+  },
+
+  saveAuthData(data: AuthResponse['data']) {
+    localStorage.setItem('accessToken', data.accessToken);
+    localStorage.setItem('refreshToken', data.refreshToken);
+    localStorage.setItem('user', JSON.stringify(data.user));
   },
 };
 
@@ -90,20 +120,24 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
 
   // Si el token expiró, intentar refrescarlo
   if (response.status === 401) {
-    const refreshToken = localStorage.getItem('refreshToken');
+    const refreshToken = authService.getRefreshToken();
     if (refreshToken) {
       try {
         const newAuth = await authService.refreshToken(refreshToken);
-        localStorage.setItem('accessToken', newAuth.data.accessToken);
-        localStorage.setItem('refreshToken', newAuth.data.refreshToken);
+        authService.saveAuthData(newAuth.data);
         
         // Reintentar la petición original
         headers.Authorization = `Bearer ${newAuth.data.accessToken}`;
         return fetch(url, { ...options, headers });
       } catch (error) {
-        authService.logout();
+        await authService.logout();
         window.location.href = '/auth/login';
+        throw error;
       }
+    } else {
+      // No refresh token available, redirect to login
+      await authService.logout();
+      window.location.href = '/auth/login';
     }
   }
 
