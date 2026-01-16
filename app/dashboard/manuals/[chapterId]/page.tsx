@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, ChevronRight, Plus, Loader2, AlertCircle } from 'lucide-react';
+import { ChevronRight, Plus, Loader2, AlertCircle, Edit } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -37,7 +37,8 @@ export default function ChapterPage({
       setChapter(chapterData);
       setSections(sectionsData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load chapter');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load chapter';
+      setError(errorMessage);
       console.error('Error loading chapter:', err);
     } finally {
       setLoading(false);
@@ -119,7 +120,12 @@ export default function ChapterPage({
               </p>
             </div>
             <div className="flex space-x-3">
-              <Button variant="secondary">Edit Chapter</Button>
+              <Link href={`/dashboard/manuals/${unwrappedParams.chapterId}/edit`}>
+                <Button variant="secondary">
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit Chapter
+                </Button>
+              </Link>
               <Link href={`/dashboard/manuals/${unwrappedParams.chapterId}/sections/new`}>
                 <Button>
                   <Plus className="w-4 h-4 mr-2" />
@@ -128,6 +134,15 @@ export default function ChapterPage({
               </Link>
             </div>
           </div>
+
+          {/* Chapter Description */}
+          {chapter.description && (
+            <Card className="bg-blue-50 border-blue-200">
+              <CardContent className="p-4">
+                <p className="text-sm text-blue-900">{chapter.description}</p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Empty State */}
           {sections.length === 0 && (
