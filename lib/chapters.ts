@@ -24,13 +24,13 @@ export interface ChapterResponse {
 }
 
 export interface CreateChapterData {
-  name: string;
+  title: string;
   airlineId: string;
   active?: boolean;
 }
 
 export interface UpdateChapterData {
-  name?: string;
+  title?: string;
   active?: boolean;
 }
 
