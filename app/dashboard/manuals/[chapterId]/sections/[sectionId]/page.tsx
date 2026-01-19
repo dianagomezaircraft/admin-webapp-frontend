@@ -29,6 +29,7 @@ export default function SectionPage({
   }) {
   const unwrappedParams = use(params);
   const [section, setSection] = useState<Section | null>(null);
+  const [chapterTitle, setChapterTitle] = useState<string>('Chapter');
   const [contents, setContents] = useState<Content[]>([]);
   const [selectedContent, setSelectedContent] = useState<Content | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,6 +52,17 @@ export default function SectionPage({
       // Load section details
       const sectionData = await sectionsService.getById(unwrappedParams.sectionId);
       setSection(sectionData);
+
+      // Load chapter title
+      if (sectionData.chapterId) {
+        try {
+          const { chaptersService } = await import('@/lib/chapters');
+          const chapterData = await chaptersService.getById(sectionData.chapterId);
+          setChapterTitle(chapterData.title);
+        } catch (err) {
+          console.error('Error loading chapter:', err);
+        }
+      }
 
       // Load content for this section
       const contentData = await contentService.getAllBySection(unwrappedParams.sectionId);
@@ -151,10 +163,10 @@ export default function SectionPage({
         </Link>
         <ChevronRight className="w-4 h-4 text-gray-400" />
         <Link 
-          href={`/dashboard/manuals/${params.chapterId}`} 
+          href={`/dashboard/manuals/${unwrappedParams.chapterId}`} 
           className="text-gray-600 hover:text-gray-900"
         >
-          Chapter
+          {chapterTitle}
         </Link>
         <ChevronRight className="w-4 h-4 text-gray-400" />
         <span className="text-gray-900">{section.title}</span>
@@ -208,65 +220,69 @@ export default function SectionPage({
             const isSelected = selectedContent?.id === content.id;
             
             return (
-              <Card 
-                key={content.id} 
-                className={`hover:shadow-md transition-all cursor-pointer ${
-                  isSelected ? 'ring-2 ring-blue-500' : ''
-                }`}
+              <div
+                key={content.id}
                 onClick={() => handleContentClick(content)}
+                className="cursor-pointer"
               >
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-4 flex-1">
-                      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Icon className="w-6 h-6 text-gray-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-gray-900 mb-1 truncate">
-                          {content.title}
-                        </h3>
-                        <div className="flex items-center space-x-3">
-                          <span className="text-xs text-gray-500 uppercase">
-                            {content.type}
-                          </span>
-                          <span className="text-xs text-gray-400">•</span>
-                          <span className="text-xs text-gray-500">
-                            Order {content.order}
-                          </span>
-                          {!content.active && (
-                            <>
-                              <span className="text-xs text-gray-400">•</span>
-                              <span className="text-xs text-amber-600">Inactive</span>
-                            </>
-                          )}
+                <Card 
+                  className={`hover:shadow-md transition-all ${
+                    isSelected ? 'ring-2 ring-blue-500' : ''
+                  }`}
+                >
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-4 flex-1">
+                        <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Icon className="w-6 h-6 text-gray-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium text-gray-900 mb-1 truncate">
+                            {content.title}
+                          </h3>
+                          <div className="flex items-center space-x-3">
+                            <span className="text-xs text-gray-500 uppercase">
+                              {content.type}
+                            </span>
+                            <span className="text-xs text-gray-400">•</span>
+                            <span className="text-xs text-gray-500">
+                              Order {content.order}
+                            </span>
+                            {!content.active && (
+                              <>
+                                <span className="text-xs text-gray-400">•</span>
+                                <span className="text-xs text-amber-600">Inactive</span>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      <div className="flex items-center space-x-1 ml-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditContent(content);
+                          }}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteContent(content.id);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-1 ml-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditContent(content);
-                        }}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteContent(content.id);
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </div>
             );
           })}
         </div>
