@@ -120,7 +120,7 @@ export default function ManualsPage() {
                       <div>
                         <div className="flex items-center space-x-2">
                           <h3 className="font-semibold text-gray-900">{chapter.title}</h3>
-                          {!chapter.isActive && (
+                          {!chapter.active && (
                             <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded">
                               Inactive
                             </span>
