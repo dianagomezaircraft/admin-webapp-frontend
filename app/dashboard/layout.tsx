@@ -11,7 +11,8 @@ import {
   LogOut,
   Menu,
   X,
-  Loader2
+  Loader2,
+  MessageSquare
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { authService } from '@/lib/auth';
@@ -23,6 +24,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Airlines', href: '/dashboard/airlines', icon: Plane },
   { name: 'Users', href: '/dashboard/users', icon: Users },
+  { name: 'Contacts', href: '/dashboard/contacts', icon: MessageSquare },
   { name: 'Manuals', href: '/dashboard/manuals', icon: BookOpen },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
