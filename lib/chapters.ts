@@ -6,13 +6,15 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 export interface Chapter {
   id: string;
   title: string;
-  description: string;
-  airlineId: string;
+  description?: string;
   order: number;
   active: boolean;
+  airlineId: string;
+  imageUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
+
 export interface ChaptersResponse {
   success: boolean;
   data: Chapter[];
@@ -25,13 +27,18 @@ export interface ChapterResponse {
 
 export interface CreateChapterData {
   title: string;
+  description?: string;
   airlineId: string;
   active?: boolean;
+  imageUrl?: string; // ✅ Agregado
 }
 
 export interface UpdateChapterData {
   title?: string;
+  description?: string;
+  order?: number;
   active?: boolean;
+  imageUrl?: string; // ✅ Agregado
 }
 
 export const chaptersService = {

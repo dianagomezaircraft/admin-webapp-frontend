@@ -1,12 +1,14 @@
 'use client';
 
-import { ArrowLeft, Loader2, AlertCircle, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, Save, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { use, useEffect, useState } from 'react';
 import { chaptersService, Chapter } from '@/lib/chapters';
+import { storageService } from '@/lib/storage';
+import Image from 'next/image';
 
 export default function EditChapterPage({ 
   params 
@@ -18,14 +20,18 @@ export default function EditChapterPage({
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     order: 0,
     active: true,
+    currentImageUrl: '',
   });
 
   useEffect(() => {
@@ -45,13 +51,76 @@ export default function EditChapterPage({
         description: chapterData.description || '',
         order: chapterData.order,
         active: chapterData.active,
+        currentImageUrl: chapterData.imageUrl || '',
       });
+      
+      // Set current image as preview if exists
+      if (chapterData.imageUrl) {
+        setImagePreview(chapterData.imageUrl);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load chapter';
       setError(errorMessage);
       console.error('Error loading chapter:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+    if (!validTypes.includes(file.type)) {
+      setError('Please select a valid image file (JPG, PNG, or WebP)');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setError('Image size must be less than 5MB');
+      return;
+    }
+
+    setImageFile(file);
+    setError(null);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = async () => {
+    if (formData.currentImageUrl && window.confirm('Are you sure you want to remove the current image?')) {
+      try {
+        // Delete from Supabase
+        await storageService.deleteChapterImage(formData.currentImageUrl);
+        
+        // Update chapter to remove imageUrl
+        await chaptersService.update(unwrappedParams.chapterId, {
+          imageUrl: null as any,
+        });
+        
+        setFormData(prev => ({ ...prev, currentImageUrl: '' }));
+        setImagePreview(null);
+        setImageFile(null);
+        setSuccessMessage('Image removed successfully');
+        
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } catch (err) {
+        setError('Failed to remove image');
+        console.error('Error removing image:', err);
+      }
+    } else if (!formData.currentImageUrl) {
+      // Just clear the preview if it's a new upload
+      setImageFile(null);
+      setImagePreview(null);
     }
   };
 
@@ -72,12 +141,28 @@ export default function EditChapterPage({
         throw new Error('Order must be a positive number');
       }
 
+      // Upload new image if selected
+      let imageUrl = formData.currentImageUrl;
+      if (imageFile) {
+        setIsUploadingImage(true);
+        
+        // Delete old image if exists
+        if (formData.currentImageUrl) {
+          await storageService.deleteChapterImage(formData.currentImageUrl);
+        }
+        
+        // Upload new image
+        imageUrl = await storageService.uploadChapterImage(imageFile, unwrappedParams.chapterId);
+        setIsUploadingImage(false);
+      }
+
       // Prepare update data
       const updateData = {
         title: formData.title.trim(),
         description: formData.description.trim() || undefined,
         order: formData.order,
         active: formData.active,
+        imageUrl: imageUrl || undefined,
       };
 
       // Call the API
@@ -98,6 +183,7 @@ export default function EditChapterPage({
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSaving(false);
+      setIsUploadingImage(false);
     }
   };
 
@@ -226,6 +312,61 @@ export default function EditChapterPage({
               />
             </div>
 
+            {/* Image Upload Section */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Chapter Image
+              </label>
+              
+              {!imagePreview ? (
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/jpg"
+                    onChange={handleImageChange}
+                    className="hidden"
+                    id="image-upload"
+                    disabled={saving}
+                  />
+                  <label
+                    htmlFor="image-upload"
+                    className="cursor-pointer flex flex-col items-center"
+                  >
+                    <Upload className="w-12 h-12 text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-600">
+                      Click to upload or drag and drop
+                    </span>
+                    <span className="text-xs text-gray-500 mt-1">
+                      PNG, JPG or WebP (max. 5MB)
+                    </span>
+                  </label>
+                </div>
+              ) : (
+                <div className="relative border border-gray-300 rounded-lg overflow-hidden">
+                  <Image
+                    src={imagePreview}
+                    alt="Chapter preview"
+                    width={400}
+                    height={200}
+                    className="w-full h-48 object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors shadow-lg"
+                    disabled={saving}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  {imageFile && (
+                    <div className="absolute bottom-2 left-2 bg-blue-500 text-white px-3 py-1 rounded-full text-xs">
+                      New image selected
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Order Field */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -281,7 +422,7 @@ export default function EditChapterPage({
                 {saving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
+                    {isUploadingImage ? 'Uploading image...' : 'Saving...'}
                   </>
                 ) : (
                   <>
