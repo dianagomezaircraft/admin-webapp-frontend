@@ -30,6 +30,7 @@ export default function EditSectionPage() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    imageUrl: '',
     order: 1,
     active: true,
   });
@@ -50,12 +51,13 @@ export default function EditSectionPage() {
       setFormData({
         title: data.title,
         description: data.description || '',
+        imageUrl: data.imageUrl || '',
         order: data.order,
         active: data.active,
       });
 
       // Set current image if exists
-      if (data.imageUrl) {
+      if (data.imageUrl != null && data.imageUrl != '' ) {
         setCurrentImageUrl(data.imageUrl);
       }
     } catch (err) {
@@ -132,6 +134,7 @@ export default function EditSectionPage() {
       const updateData = {
         title: formData.title,
         description: formData.description || null,
+        imageUrl: formData.imageUrl || '',
         order: formData.order,
         active: formData.active,
       };
