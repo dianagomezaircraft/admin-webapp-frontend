@@ -1,6 +1,7 @@
 // app/dashboard/contacts/new/page.tsx
 'use client';
 
+import { Suspense } from 'react';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -12,17 +13,19 @@ import { Label } from '@/components/ui/Label';
 import { contactsService, ContactGroup } from '@/lib/contacts';
 import { authService } from '@/lib/auth';
 import { User } from '@/lib/users';
+
 interface Airline {
   id: string;
   name: string;
   code: string;
 }
 
-export default function CreateContactPage() {
+function CreateContactForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedGroupId = searchParams.get('groupId');
 
+  // ... rest of your component code stays exactly the same ...
   const [user, setUser] = useState<User | null>(null);
   const [contactGroups, setContactGroups] = useState<ContactGroup[]>([]);
   const [airlines, setAirlines] = useState<Airline[]>([]);
@@ -53,7 +56,6 @@ export default function CreateContactPage() {
   });
 
   useEffect(() => {
-    // Get user from authService
     const currentUser = authService.getUser();
     setUser(currentUser);
     
@@ -66,18 +68,16 @@ export default function CreateContactPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-    const loadInitialData = async (currentUser: User) => {
-      console.log(currentUser);
-      
+  const loadInitialData = async (currentUser: User) => {
+    console.log(currentUser);
+    
     setIsLoadingData(true);
     setError(null);
 
     try {
-      // Load contact groups
       const groups = await contactsService.getAllGroups();
       setContactGroups(groups);
 
-      // If user is SUPER_ADMIN, extract airlines from groups
       if (currentUser?.role === 'SUPER_ADMIN') {
         const uniqueAirlines = Array.from(
           new Map(
@@ -88,7 +88,6 @@ export default function CreateContactPage() {
         );
         setAirlines(uniqueAirlines);
       } else {
-        // For normal users, use their airlineId
         if (currentUser?.airlineId) {
           setFormData(prev => ({ ...prev, airlineId: currentUser.airlineId || '' }));
         }
@@ -117,7 +116,6 @@ export default function CreateContactPage() {
     setError(null);
 
     try {
-      // Validaciones
       if (!formData.firstName.trim()) {
         throw new Error('First name is required');
       }
@@ -131,7 +129,6 @@ export default function CreateContactPage() {
         throw new Error('Airline is required');
       }
 
-      // Prepare metadata object
       const metadataObj: Record<string, string> = {};
       if (metadata.officeTel) metadataObj.office_tel = metadata.officeTel;
       if (metadata.homeTel) metadataObj.home_tel = metadata.homeTel;
@@ -172,14 +169,12 @@ export default function CreateContactPage() {
     );
   }
 
-  // Filter groups by selected airline (for SUPER_ADMIN)
   const filteredGroups = formData.airlineId
     ? contactGroups.filter(g => g.airlineId === formData.airlineId)
     : contactGroups;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center space-x-4">
         <Link href="/dashboard/contacts">
           <Button variant="secondary" size="sm">
@@ -193,7 +188,6 @@ export default function CreateContactPage() {
         </div>
       </div>
 
-      {/* Error Message */}
       {error && (
         <Card className="border-red-200 bg-red-50">
           <CardContent className="p-4">
@@ -202,14 +196,12 @@ export default function CreateContactPage() {
         </Card>
       )}
 
-      {/* Form */}
       <form onSubmit={handleSubmit}>
         <Card>
           <CardHeader>
             <CardTitle>Contact Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Airline Selection (SUPER_ADMIN only) */}
             {user?.role === 'SUPER_ADMIN' && (
               <div className="pb-6 border-b">
                 <Label htmlFor="airlineId">
@@ -236,7 +228,6 @@ export default function CreateContactPage() {
               </div>
             )}
 
-            {/* Contact Group Selection */}
             <div>
               <Label htmlFor="groupId">
                 Contact Group <span className="text-red-500">*</span>
@@ -264,7 +255,6 @@ export default function CreateContactPage() {
               )}
             </div>
 
-            {/* Basic Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <Label htmlFor="firstName">
@@ -317,7 +307,6 @@ export default function CreateContactPage() {
               </div>
             </div>
 
-            {/* Contact Details */}
             <div className="border-t pt-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Details</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -370,7 +359,6 @@ export default function CreateContactPage() {
               </div>
             </div>
 
-            {/* Additional Contact Information */}
             <div className="border-t pt-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -424,7 +412,6 @@ export default function CreateContactPage() {
               </div>
             </div>
 
-            {/* Settings */}
             <div className="border-t pt-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Settings</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -459,7 +446,6 @@ export default function CreateContactPage() {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex justify-end space-x-3 pt-6 border-t">
               <Link href="/dashboard/contacts">
                 <Button type="button" variant="secondary" disabled={isSaving}>
@@ -484,5 +470,21 @@ export default function CreateContactPage() {
         </Card>
       </form>
     </div>
+  );
+}
+
+// Main export with Suspense wrapper
+export default function CreateContactPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <CreateContactForm />
+    </Suspense>
   );
 }
