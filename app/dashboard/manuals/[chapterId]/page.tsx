@@ -1,7 +1,8 @@
 'use client';
 
-import { ChevronRight, Plus, Loader2, AlertCircle, Edit } from 'lucide-react';
+import { ChevronRight, Plus, Loader2, AlertCircle, Edit, Image as ImageIcon } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { use, useEffect, useState } from 'react';
@@ -21,6 +22,7 @@ export default function ChapterPage({
 
   useEffect(() => {
     loadChapterAndSections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unwrappedParams.chapterId]);
 
   const loadChapterAndSections = async () => {
@@ -31,7 +33,7 @@ export default function ChapterPage({
       // Load chapter details and sections in parallel
       const [chapterData, sectionsData] = await Promise.all([
         chaptersService.getById(unwrappedParams.chapterId),
-        sectionsService.getAllByChapter(unwrappedParams.chapterId)
+        sectionsService.getAllLegacy(unwrappedParams.chapterId)
       ]);
 
       setChapter(chapterData);
@@ -135,14 +137,36 @@ export default function ChapterPage({
             </div>
           </div>
 
-          {/* Chapter Description */}
-          {chapter.description && (
-            <Card className="bg-blue-50 border-blue-200">
-              <CardContent className="p-4">
-                <p className="text-sm text-blue-900">{chapter.description}</p>
-              </CardContent>
-            </Card>
-          )}
+          {/* Chapter Image & Description */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Chapter Image */}
+            {chapter.imageUrl && (
+              <div className="lg:col-span-1">
+                <Card>
+                  <CardContent className="p-0">
+                    <Image
+                      src={chapter.imageUrl}
+                      alt={chapter.title}
+                      width={400}
+                      height={250}
+                      className="w-full h-48 object-cover rounded-lg"
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Chapter Description */}
+            {chapter.description && (
+              <div className={chapter.imageUrl ? 'lg:col-span-2' : 'lg:col-span-3'}>
+                <Card className="bg-blue-50 border-blue-200 h-full">
+                  <CardContent className="p-4 flex items-center h-full">
+                    <p className="text-sm text-blue-900">{chapter.description}</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
 
           {/* Empty State */}
           {sections.length === 0 && (
@@ -175,30 +199,51 @@ export default function ChapterPage({
                 >
                   <Card className="hover:shadow-md transition-shadow cursor-pointer">
                     <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
-                          <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
-                            <span className="text-sm font-medium text-gray-700">
+                      <div className="flex items-center justify-between gap-4">
+                        {/* Section Number & Content */}
+                        <div className="flex items-center space-x-4 flex-1 min-w-0">
+                          <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center flex-shrink-0">
+                            <span className="text-sm font-medium text-blue-700">
                               {section.order}
                             </span>
                           </div>
-                          <div>
+
+                          {/* Section Image Thumbnail */}
+                          {section.imageUrl && (
+                            <div className="relative w-16 h-16 rounded overflow-hidden flex-shrink-0">
+                              <Image
+                                src={section.imageUrl}
+                                alt={section.title}
+                                fill
+                                className="object-cover"
+                              />
+                            </div>
+                          )}
+
+                          {/* Section Details */}
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center space-x-2">
-                              <h3 className="font-medium text-gray-900">{section.title}</h3>
+                              <h3 className="font-medium text-gray-900 truncate">
+                                {section.title}
+                              </h3>
                               {!section.active && (
-                                <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded">
+                                <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded flex-shrink-0">
                                   Inactive
                                 </span>
                               )}
+                              {section.imageUrl && (
+                                <ImageIcon className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                              )}
                             </div>
                             {section.description && (
-                              <p className="text-sm text-gray-500 mt-0.5">
+                              <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">
                                 {section.description}
                               </p>
                             )}
                           </div>
                         </div>
-                        <ChevronRight className="w-5 h-5 text-gray-400" />
+
+                        <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
                       </div>
                     </CardContent>
                   </Card>

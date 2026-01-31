@@ -15,6 +15,13 @@ export interface Chapter {
   updatedAt: string;
 }
 
+export interface Airline {
+  id: string;
+  name: string;
+  code: string;
+  active: boolean;
+}
+
 export interface ChaptersResponse {
   success: boolean;
   data: Chapter[];
@@ -56,6 +63,18 @@ export const chaptersService = {
     }
 
     const result: ChaptersResponse = await response.json();
+    return result.data;
+  },
+
+  async getAirlines(): Promise<Airline[]> {
+    const response = await fetchWithAuth(`${API_URL}/airlines`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch airlines');
+    }
+
+    const result = await response.json();
     return result.data;
   },
 

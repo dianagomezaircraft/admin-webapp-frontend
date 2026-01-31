@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Loader2, AlertCircle, Save, Upload, X } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, Save, Upload, X, Copy } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -10,6 +10,13 @@ import { chaptersService, Chapter } from '@/lib/chapters';
 import { storageService } from '@/lib/storage';
 import Image from 'next/image';
 
+interface Airline {
+  id: string;
+  name: string;
+  code: string;
+  active: boolean;
+}
+
 export default function EditChapterPage({ 
   params 
 }: { 
@@ -18,6 +25,8 @@ export default function EditChapterPage({
   const router = useRouter();
   const unwrappedParams = use(params);
   const [chapter, setChapter] = useState<Chapter | null>(null);
+  const [airlines, setAirlines] = useState<Airline[]>([]);
+  const [selectedAirlineIds, setSelectedAirlineIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -35,17 +44,23 @@ export default function EditChapterPage({
   });
 
   useEffect(() => {
-    loadChapter();
+    loadData();
   }, [unwrappedParams.chapterId]);
 
-  const loadChapter = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const chapterData = await chaptersService.getById(unwrappedParams.chapterId);
+      // Load chapter data and airlines in parallel
+      const [chapterData, airlinesData] = await Promise.all([
+        chaptersService.getById(unwrappedParams.chapterId),
+        chaptersService.getAirlines(), // Endpoint: GET /api/airlines
+      ]);
       
       setChapter(chapterData);
+      setAirlines(airlinesData);
+      
       setFormData({
         title: chapterData.title,
         description: chapterData.description || '',
@@ -58,12 +73,36 @@ export default function EditChapterPage({
       if (chapterData.imageUrl) {
         setImagePreview(chapterData.imageUrl);
       }
+
+      // Set current airline as selected
+      setSelectedAirlineIds(new Set([chapterData.airlineId]));
+      
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load chapter';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load data';
       setError(errorMessage);
-      console.error('Error loading chapter:', err);
+      console.error('Error loading data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAirlineToggle = (airlineId: string) => {
+    setSelectedAirlineIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(airlineId)) {
+        newSet.delete(airlineId);
+      } else {
+        newSet.add(airlineId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedAirlineIds.size === airlines.length) {
+      setSelectedAirlineIds(new Set());
+    } else {
+      setSelectedAirlineIds(new Set(airlines.map(a => a.id)));
     }
   };
 
@@ -104,7 +143,7 @@ export default function EditChapterPage({
         
         // Update chapter to remove imageUrl
         await chaptersService.update(unwrappedParams.chapterId, {
-          imageUrl: null as any,
+          imageUrl: '',
         });
         
         setFormData(prev => ({ ...prev, currentImageUrl: '' }));
@@ -141,6 +180,10 @@ export default function EditChapterPage({
         throw new Error('Order must be a positive number');
       }
 
+      if (selectedAirlineIds.size === 0) {
+        throw new Error('Please select at least one airline');
+      }
+
       // Upload new image if selected
       let imageUrl = formData.currentImageUrl;
       if (imageFile) {
@@ -165,15 +208,40 @@ export default function EditChapterPage({
         imageUrl: imageUrl || undefined,
       };
 
-      // Call the API
-      await chaptersService.update(unwrappedParams.chapterId, updateData);
+      const selectedAirlineIdsArray = Array.from(selectedAirlineIds);
+      const currentAirlineId = chapter?.airlineId;
+
+      // SOLUCIÓN SIMPLE: Actualizar, eliminar o duplicar según sea necesario
+      
+      // 1. Si la aerolínea actual sigue seleccionada, actualizar el capítulo existente
+      if (currentAirlineId && selectedAirlineIdsArray.includes(currentAirlineId)) {
+        await chaptersService.update(unwrappedParams.chapterId, updateData);
+      } else {
+        // Si la aerolínea actual ya no está seleccionada, eliminar este capítulo
+        await chaptersService.delete(unwrappedParams.chapterId);
+      }
+
+      // 2. Para las demás aerolíneas seleccionadas, duplicar el capítulo
+      const airlinesToDuplicate = selectedAirlineIdsArray.filter(
+        id => id !== currentAirlineId || !selectedAirlineIdsArray.includes(currentAirlineId!)
+      );
+
+      for (const airlineId of airlinesToDuplicate) {
+        await chaptersService.create({
+          ...updateData,
+          airlineId,
+        });
+      }
+
+      // 3. Eliminar duplicados de aerolíneas que ya no están seleccionadas
+      // (esto requiere un endpoint especial o hacerlo en el backend)
       
       // Show success message
       setSuccessMessage('Chapter updated successfully!');
       
-      // Redirect back to chapter page after a short delay
+      // Redirect back to manuals page after a short delay
       setTimeout(() => {
-        router.push(`/dashboard/manuals/${unwrappedParams.chapterId}`);
+        router.push('/dashboard/manuals');
       }, 1500);
       
     } catch (err) {
@@ -219,7 +287,7 @@ export default function EditChapterPage({
               </div>
             </div>
             <div className="mt-4 flex space-x-3">
-              <Button onClick={loadChapter}>Try Again</Button>
+              <Button onClick={loadData}>Try Again</Button>
               <Button variant="secondary" onClick={() => router.push('/dashboard/manuals')}>
                 Back to Chapters
               </Button>
@@ -247,6 +315,21 @@ export default function EditChapterPage({
           </div>
         </div>
       </div>
+
+      {/* Info Banner */}
+      <Card className="border-blue-200 bg-blue-50">
+        <CardContent className="p-4">
+          <div className="flex items-start space-x-3">
+            <Copy className="w-5 h-5 text-blue-600 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-blue-900">Multiple Airlines</h3>
+              <p className="text-sm text-blue-700 mt-1">
+                Selecting multiple airlines will create duplicate chapters for each selected airline with the same content.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Success Message */}
       {successMessage && (
@@ -310,6 +393,76 @@ export default function EditChapterPage({
                 rows={4}
                 disabled={saving}
               />
+            </div>
+
+            {/* Airlines Selection */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  Airlines <span className="text-red-500">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  disabled={saving}
+                >
+                  {selectedAirlineIds.size === airlines.length ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
+              
+              <div className="border border-gray-300 rounded-lg p-4 max-h-64 overflow-y-auto">
+                {airlines.length === 0 ? (
+                  <p className="text-gray-500 text-sm text-center py-4">
+                    No airlines available
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {airlines.map((airline) => (
+                      <label
+                        key={airline.id}
+                        className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                          selectedAirlineIds.has(airline.id)
+                            ? 'bg-blue-50 border border-blue-200'
+                            : 'hover:bg-gray-50 border border-transparent'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedAirlineIds.has(airline.id)}
+                          onChange={() => handleAirlineToggle(airline.id)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          disabled={saving}
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-medium text-gray-900">
+                              {airline.name}
+                            </span>
+                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                              {airline.code}
+                            </span>
+                          </div>
+                        </div>
+                        {!airline.active && (
+                          <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+                            Inactive
+                          </span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* <p className="text-sm text-gray-500 mt-2">
+                Selected: {selectedAirlineIds.size} of {airlines.length}
+                {selectedAirlineIds.size > 1 && (
+                  <span className="text-blue-600 font-medium ml-2">
+                    ({selectedAirlineIds.size - 1} duplicate{selectedAirlineIds.size > 2 ? 's' : ''} will be created)
+                  </span>
+                )}
+              </p> */}
             </div>
 
             {/* Image Upload Section */}
@@ -447,7 +600,7 @@ export default function EditChapterPage({
                 <p className="text-gray-900 font-mono mt-1">{chapter.id}</p>
               </div>
               <div>
-                <span className="text-gray-500">Airline ID:</span>
+                <span className="text-gray-500">Current Airline ID:</span>
                 <p className="text-gray-900 font-mono mt-1">{chapter.airlineId}</p>
               </div>
               <div>

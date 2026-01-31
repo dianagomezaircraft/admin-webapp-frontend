@@ -4,11 +4,11 @@ import { useState, useEffect, use } from 'react';
 import { FileText, Image, Video, FileAudio, Loader2, AlertCircle } from 'lucide-react';
 import { ChevronRight, Plus, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { sectionsService, Section } from '@/lib/sections';
 import { contentService, Content, ContentType } from '@/lib/content';
-import EditSectionModal from '@/components/ui/EditSectionModal';
 import AddContentModal from '@/components/ui/AddContentModal';
 import EditContentModal from '@/components/ui/EditContentModal';
 
@@ -28,6 +28,7 @@ export default function SectionPage({
   params: Promise<{ chapterId: string; sectionId: string }>
   }) {
   const unwrappedParams = use(params);
+  const router = useRouter();
   const [section, setSection] = useState<Section | null>(null);
   const [chapterTitle, setChapterTitle] = useState<string>('Chapter');
   const [contents, setContents] = useState<Content[]>([]);
@@ -36,7 +37,6 @@ export default function SectionPage({
   const [error, setError] = useState<string | null>(null);
   
   // Modal states
-  const [isEditSectionModalOpen, setIsEditSectionModalOpen] = useState(false);
   const [isAddContentModalOpen, setIsAddContentModalOpen] = useState(false);
   const [isEditContentModalOpen, setIsEditContentModalOpen] = useState(false);
 
@@ -75,10 +75,7 @@ export default function SectionPage({
     }
   };
 
-  const handleSectionUpdated = () => {
-    loadSectionAndContent();
-    setIsEditSectionModalOpen(false);
-  };
+  
 
   const handleContentAdded = () => {
     loadSectionAndContent();
@@ -114,6 +111,28 @@ export default function SectionPage({
     } catch (err) {
       console.error('Error deleting content:', err);
       alert(err instanceof Error ? err.message : 'Failed to delete content');
+    }
+  };
+
+  const handleDeleteSection = async () => {
+    if (!section) return;
+
+    // Confirmación con advertencia sobre el contenido
+    const confirmMessage = contents.length > 0
+      ? `Are you sure you want to delete "${section.title}"?\n\nThis section contains ${contents.length} content item${contents.length === 1 ? '' : 's'} that will also be deleted. This action cannot be undone.`
+      : `Are you sure you want to delete "${section.title}"?\n\nThis action cannot be undone.`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      await sectionsService.delete(unwrappedParams.sectionId);
+      // Redirigir al capítulo después de eliminar
+      router.push(`/dashboard/manuals/${unwrappedParams.chapterId}`);
+    } catch (err) {
+      console.error('Error deleting section:', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete section');
     }
   };
 
@@ -184,13 +203,26 @@ export default function SectionPage({
           </p>
         </div>
         <div className="flex space-x-3">
+          <Link href={`/dashboard/manuals/${unwrappedParams.chapterId}/sections/${unwrappedParams.sectionId}/edit`} className="text-blue-600 hover:underline mt-2 inline-block">
+         
           <Button 
             variant="secondary"
-            onClick={() => setIsEditSectionModalOpen(true)}
           >
             <Pencil className="w-4 h-4 mr-2" />
             Edit Section
+            </Button>
+            
+          </Link>
+          
+          <Button 
+            variant="secondary"
+            onClick={handleDeleteSection}
+            className="border-red-200 text-red-600 hover:bg-red-50"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete Section
           </Button>
+          
           <Button onClick={() => setIsAddContentModalOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Add Content
@@ -367,14 +399,7 @@ export default function SectionPage({
         </CardContent>
       </Card>
 
-      {/* Modals */}
-      {isEditSectionModalOpen && (
-        <EditSectionModal
-          section={section}
-          onClose={() => setIsEditSectionModalOpen(false)}
-          onSuccess={handleSectionUpdated}
-        />
-      )}
+      
 
       {isAddContentModalOpen && (
         <AddContentModal

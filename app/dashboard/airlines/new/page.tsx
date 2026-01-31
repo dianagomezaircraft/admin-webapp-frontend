@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2, Upload, X } from 'lucide-react';
 import { airlinesService } from '@/lib/airlines';
+import { storageService } from '@/lib/storage';
+import Image from 'next/image';
 
 export default function NewAirlinePage() {
   const router = useRouter();
@@ -16,14 +18,18 @@ export default function NewAirlinePage() {
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    logo: '',
     primaryColor: '#0078D2',
     secondaryColor: '#C8102E',
   });
   
   // Estados de control
   const [creating, setCreating] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Estados para el logo
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   /**
    * Maneja los cambios en los inputs del formulario
@@ -36,6 +42,46 @@ export default function NewAirlinePage() {
     // Limpiar error al editar
     setError(null);
   }
+
+  /**
+   * Maneja la selección del archivo de logo
+   */
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/svg+xml'];
+    if (!validTypes.includes(file.type)) {
+      setError('Please select a valid image file (JPG, PNG, WebP, or SVG)');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      setError('Image size must be less than 5MB');
+      return;
+    }
+
+    setLogoFile(file);
+    setError(null);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setLogoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /**
+   * Remueve el logo seleccionado
+   */
+  const handleRemoveLogo = () => {
+    setLogoFile(null);
+    setLogoPreview(null);
+  };
 
   /**
    * Crea la nueva aerolínea en el servidor
@@ -64,11 +110,10 @@ export default function NewAirlinePage() {
       setCreating(true);
       setError(null);
       
-      // Preparar los datos para enviar
+      // Create airline first to get the ID
       const createData = {
         name: formData.name.trim(),
         code: formData.code.trim().toUpperCase(), // Convertir a mayúsculas
-        logo: formData.logo.trim() || undefined, // Si está vacío, no enviar
         branding: {
           primaryColor: formData.primaryColor,
           secondaryColor: formData.secondaryColor,
@@ -76,7 +121,19 @@ export default function NewAirlinePage() {
       };
       
       // Llamar al servicio de creación
-      await airlinesService.create(createData);
+      const newAirline = await airlinesService.create(createData);
+      
+      // Upload logo if selected
+      let logoUrl = null;
+      if (logoFile && newAirline.id) {
+        setIsUploadingLogo(true);
+        logoUrl = await storageService.uploadAirlineLogo(logoFile, newAirline.id);
+        
+        // Update airline with logo URL
+        await airlinesService.update(newAirline.id, {
+          logo: logoUrl,
+        });
+      }
       
       // Si todo sale bien, redirigir a la lista de aerolíneas
       router.push('/dashboard/airlines');
@@ -86,6 +143,7 @@ export default function NewAirlinePage() {
       setError(err instanceof Error ? err.message : 'Failed to create airline');
     } finally {
       setCreating(false);
+      setIsUploadingLogo(false);
     }
   }
 
@@ -140,15 +198,60 @@ export default function NewAirlinePage() {
               />
             </div>
 
-            {/* Logo URL */}
-            <Input
-              label="Logo URL"
-              value={formData.logo}
-              onChange={(e) => handleInputChange('logo', e.target.value)}
-              type="url"
-              placeholder="https://example.com/logo.png"
-              disabled={creating}
-            />
+            {/* Logo Upload Section */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Airline Logo
+              </label>
+              
+              {!logoPreview ? (
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/jpg,image/svg+xml"
+                    onChange={handleLogoChange}
+                    className="hidden"
+                    id="logo-upload"
+                    disabled={creating}
+                  />
+                  <label
+                    htmlFor="logo-upload"
+                    className="cursor-pointer flex flex-col items-center"
+                  >
+                    <Upload className="w-12 h-12 text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-600">
+                      Click to upload or drag and drop
+                    </span>
+                    <span className="text-xs text-gray-500 mt-1">
+                      PNG, JPG, WebP or SVG (max. 5MB)
+                    </span>
+                  </label>
+                </div>
+              ) : (
+                <div className="relative border border-gray-300 rounded-lg overflow-hidden bg-white">
+                  <div className="flex items-center justify-center p-6 bg-gray-50">
+                    <Image
+                      src={logoPreview}
+                      alt="Logo Preview"
+                      width={200}
+                      height={200}
+                      className="max-h-32 w-auto object-contain"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition-colors"
+                    disabled={creating}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Optional: Upload a logo for this airline
+              </p>
+            </div>
 
             {/* Colores de Branding */}
             <div className="space-y-4">
@@ -208,7 +311,14 @@ export default function NewAirlinePage() {
                 type="submit" 
                 disabled={creating}
               >
-                {creating ? 'Creating...' : 'Create Airline'}
+                {creating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {isUploadingLogo ? 'Uploading logo...' : 'Creating...'}
+                  </>
+                ) : (
+                  'Create Airline'
+                )}
               </Button>
               
               <Button

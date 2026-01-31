@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2, Upload, X } from 'lucide-react';
 import { airlinesService, Airline } from '@/lib/airlines';
+import { storageService } from '@/lib/storage';
+import Image from 'next/image';
 
 export default function EditAirlinePage({ 
   params 
@@ -32,8 +34,14 @@ export default function EditAirlinePage({
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Estados para el logo
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(null);
 
   // Cargar datos cuando el componente se monta o el ID cambia
   useEffect(() => {
@@ -69,6 +77,11 @@ export default function EditAirlinePage({
         secondaryColor: data.branding?.secondaryColor || '#C8102E',
         active: data.active ?? true,
       });
+
+      // Establecer el logo actual si existe
+      if (data.logo) {
+        setCurrentLogoUrl(data.logo);
+      }
       
     } catch (err) {
       console.error('Error loading airline:', err);
@@ -90,6 +103,57 @@ export default function EditAirlinePage({
     setError(null);
     setSuccessMessage(null);
   }
+
+  /**
+   * Maneja la selección del archivo de logo
+   */
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/svg+xml'];
+    if (!validTypes.includes(file.type)) {
+      setError('Please select a valid image file (JPG, PNG, WebP, or SVG)');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      setError('Image size must be less than 5MB');
+      return;
+    }
+
+    setLogoFile(file);
+    setError(null);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setLogoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /**
+   * Remueve el logo seleccionado
+   */
+  const handleRemoveLogo = () => {
+    setLogoFile(null);
+    setLogoPreview(null);
+  };
+
+  /**
+   * Remueve el logo actual de la aerolínea
+   */
+  const handleRemoveCurrentLogo = () => {
+    setCurrentLogoUrl(null);
+    setFormData(prev => ({
+      ...prev,
+      logo: '',
+    }));
+  };
 
   /*
    * Guarda los cambios en el servidor
@@ -113,10 +177,17 @@ export default function EditAirlinePage({
       setError(null);
       setSuccessMessage(null);
       
+      // Upload new logo if selected
+      let logoUrl = currentLogoUrl || formData.logo;
+      if (logoFile) {
+        setIsUploadingLogo(true);
+        logoUrl = await storageService.uploadAirlineLogo(logoFile, airlineId);
+      }
+      
       // Preparar los datos para enviar al servidor
       const updateData = {
         name: formData.name,
-        logo: formData.logo || undefined,
+        logo: logoUrl || undefined,
         branding: {
           primaryColor: formData.primaryColor,
           secondaryColor: formData.secondaryColor,
@@ -129,6 +200,11 @@ export default function EditAirlinePage({
       
       // Mostrar mensaje de éxito
       setSuccessMessage('Airline updated successfully!');
+      
+      // Limpiar estados de logo
+      setLogoFile(null);
+      setLogoPreview(null);
+      setIsUploadingLogo(false);
       
       // Recargar los datos actualizados
       await loadAirlineData();
@@ -143,6 +219,7 @@ export default function EditAirlinePage({
       setError(err instanceof Error ? err.message : 'Failed to update airline');
     } finally {
       setSaving(false);
+      setIsUploadingLogo(false);
     }
   }
 
@@ -315,15 +392,94 @@ export default function EditAirlinePage({
               />
             </div>
 
-            {/* Logo URL */}
-            <Input
-              label="Logo URL"
-              value={formData.logo}
-              onChange={(e) => handleInputChange('logo', e.target.value)}
-              type="url"
-              disabled={saving}
-              placeholder="https://example.com/logo.png"
-            />
+            {/* Logo Upload Section */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Airline Logo
+              </label>
+              
+              {/* Current Logo */}
+              {currentLogoUrl && !logoPreview && (
+                <div className="mb-4">
+                  <p className="text-xs text-gray-600 mb-2">Current Logo:</p>
+                  <div className="relative border border-gray-300 rounded-lg overflow-hidden bg-white inline-block">
+                    <div className="flex items-center justify-center p-4 bg-gray-50">
+                      <Image
+                        src={currentLogoUrl}
+                        alt="Current Logo"
+                        width={200}
+                        height={200}
+                        className="max-h-32 w-auto object-contain"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCurrentLogo}
+                      className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition-colors"
+                      disabled={saving}
+                      title="Remove current logo"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* New Logo Upload */}
+              {!logoPreview ? (
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/jpg,image/svg+xml"
+                    onChange={handleLogoChange}
+                    className="hidden"
+                    id="logo-upload"
+                    disabled={saving}
+                  />
+                  <label
+                    htmlFor="logo-upload"
+                    className="cursor-pointer flex flex-col items-center"
+                  >
+                    <Upload className="w-12 h-12 text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-600">
+                      {currentLogoUrl ? 'Upload new logo' : 'Click to upload or drag and drop'}
+                    </span>
+                    <span className="text-xs text-gray-500 mt-1">
+                      PNG, JPG, WebP or SVG (max. 5MB)
+                    </span>
+                  </label>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs text-gray-600 mb-2">New Logo Preview:</p>
+                  <div className="relative border border-gray-300 rounded-lg overflow-hidden bg-white inline-block">
+                    <div className="flex items-center justify-center p-6 bg-gray-50">
+                      <Image
+                        src={logoPreview}
+                        alt="Logo Preview"
+                        width={200}
+                        height={200}
+                        className="max-h-32 w-auto object-contain"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition-colors"
+                      disabled={saving}
+                      title="Cancel new logo upload"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                {currentLogoUrl 
+                  ? 'Upload a new image to replace the current logo, or remove it entirely' 
+                  : 'Upload a logo for this airline'}
+              </p>
+            </div>
 
             {/* Colores de Branding */}
             <div className="space-y-4">
@@ -398,7 +554,14 @@ export default function EditAirlinePage({
                 type="submit" 
                 disabled={saving}
               >
-                {saving ? 'Saving...' : 'Save Changes'}
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {isUploadingLogo ? 'Uploading logo...' : 'Saving...'}
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
               </Button>
               
               <Button
@@ -428,7 +591,7 @@ export default function EditAirlinePage({
       <div className="text-sm text-gray-500">
         <p>
           <strong>Note:</strong> Airline code cannot be changed once created. 
-          Changes to branding colors will affect all airline-related displays.
+          Changes to branding colors and logo will affect all airline-related displays.
         </p>
       </div>
     </div>

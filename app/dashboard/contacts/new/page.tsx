@@ -1,40 +1,33 @@
-// app/dashboard/contacts/[id]/page.tsx
+// app/dashboard/contacts/new/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Save } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
-import { contactsService, Contact } from '@/lib/contacts';
+import { contactsService, ContactGroup } from '@/lib/contacts';
 import { authService } from '@/lib/auth';
 import { User } from '@/lib/users';
-
-interface ContactMetadata {
-  office_tel?: string;
-  officeTel?: string;
-  home_tel?: string;
-  homeTel?: string;
-  alternate_mobile?: string;
-  alternateMobile?: string;
-  uk_mobile?: string;
-  ukMobile?: string;
-  [key: string]: string | undefined;
+interface Airline {
+  id: string;
+  name: string;
+  code: string;
 }
 
-export default function EditContactPage() {
+export default function CreateContactPage() {
   const router = useRouter();
-  const params = useParams();
-  const contactId = params.id as string;
+  const searchParams = useSearchParams();
+  const preselectedGroupId = searchParams.get('groupId');
 
   const [user, setUser] = useState<User | null>(null);
-  const [contact, setContact] = useState<Contact | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [contactGroups, setContactGroups] = useState<ContactGroup[]>([]);
+  const [airlines, setAirlines] = useState<Airline[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
@@ -46,8 +39,10 @@ export default function EditContactPage() {
     email: '',
     timezone: '',
     avatar: '',
+    groupId: preselectedGroupId || '',
+    airlineId: '',
     active: true,
-    order: 0,
+    order: '0',
   });
 
   const [metadata, setMetadata] = useState({
@@ -67,46 +62,42 @@ export default function EditContactPage() {
       return;
     }
 
-    loadContact();
+    loadInitialData(currentUser);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactId]);
+  }, []);
 
-  const loadContact = async () => {
-    setIsLoading(true);
+    const loadInitialData = async (currentUser: User) => {
+      console.log(currentUser);
+      
+    setIsLoadingData(true);
     setError(null);
 
     try {
-      const data = await contactsService.getById(contactId);
-      setContact(data);
-      
-      setFormData({
-        firstName: data.firstName,
-        lastName: data.lastName,
-        title: data.title || '',
-        company: data.company || '',
-        phone: data.phone || '',
-        email: data.email || '',
-        timezone: data.timezone || '',
-        avatar: data.avatar || '',
-        active: data.active,
-        order: data.order,
-      });
+      // Load contact groups
+      const groups = await contactsService.getAllGroups();
+      setContactGroups(groups);
 
-      // Parse metadata
-      if (data.metadata) {
-        const contactMetadata = data.metadata as ContactMetadata;
-        setMetadata({
-          officeTel: contactMetadata.office_tel || contactMetadata.officeTel || '',
-          homeTel: contactMetadata.home_tel || contactMetadata.homeTel || '',
-          alternateMobile: contactMetadata.alternate_mobile || contactMetadata.alternateMobile || '',
-          ukMobile: contactMetadata.uk_mobile || contactMetadata.ukMobile || '',
-        });
+      // If user is SUPER_ADMIN, extract airlines from groups
+      if (currentUser?.role === 'SUPER_ADMIN') {
+        const uniqueAirlines = Array.from(
+          new Map(
+            groups
+              .filter(g => g.airline)
+              .map(g => [g.airline.id, g.airline])
+          ).values()
+        );
+        setAirlines(uniqueAirlines);
+      } else {
+        // For normal users, use their airlineId
+        if (currentUser?.airlineId) {
+          setFormData(prev => ({ ...prev, airlineId: currentUser.airlineId || '' }));
+        }
       }
     } catch (err) {
-      console.error('Error loading contact:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load contact');
+      console.error('Error loading data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
-      setIsLoading(false);
+      setIsLoadingData(false);
     }
   };
 
@@ -126,6 +117,20 @@ export default function EditContactPage() {
     setError(null);
 
     try {
+      // Validaciones
+      if (!formData.firstName.trim()) {
+        throw new Error('First name is required');
+      }
+      if (!formData.lastName.trim()) {
+        throw new Error('Last name is required');
+      }
+      if (!formData.groupId) {
+        throw new Error('Contact group is required');
+      }
+      if (user?.role === 'SUPER_ADMIN' && !formData.airlineId) {
+        throw new Error('Airline is required');
+      }
+
       // Prepare metadata object
       const metadataObj: Record<string, string> = {};
       if (metadata.officeTel) metadataObj.office_tel = metadata.officeTel;
@@ -133,124 +138,59 @@ export default function EditContactPage() {
       if (metadata.alternateMobile) metadataObj.alternate_mobile = metadata.alternateMobile;
       if (metadata.ukMobile) metadataObj.uk_mobile = metadata.ukMobile;
 
-      await contactsService.update(contactId, {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        title: formData.title || undefined,
-        company: formData.company || undefined,
-        phone: formData.phone || undefined,
-        email: formData.email || undefined,
-        timezone: formData.timezone || undefined,
-        avatar: formData.avatar || undefined,
+      await contactsService.create(formData.groupId, {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        title: formData.title.trim() || undefined,
+        company: formData.company.trim() || undefined,
+        phone: formData.phone.trim() || undefined,
+        email: formData.email.trim() || undefined,
+        timezone: formData.timezone.trim() || undefined,
+        avatar: formData.avatar.trim() || undefined,
         active: formData.active,
-        order: formData.order,
+        order: parseInt(formData.order, 10),
         metadata: Object.keys(metadataObj).length > 0 ? metadataObj : undefined,
       });
 
       router.push('/dashboard/contacts');
     } catch (err) {
-      console.error('Error updating contact:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update contact');
+      console.error('Error creating contact:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create contact');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this contact? This action cannot be undone.')) {
-      return;
-    }
-
-    setIsDeleting(true);
-    setError(null);
-
-    try {
-      await contactsService.delete(contactId);
-      router.push('/dashboard/contacts');
-    } catch (err) {
-      console.error('Error deleting contact:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete contact');
-      setIsDeleting(false);
-    }
-  };
-
-  if (isLoading) {
+  if (isLoadingData) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading contact...</p>
+          <p className="text-gray-600">Loading...</p>
         </div>
       </div>
     );
   }
 
-  if (error && !contact) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center space-x-4">
-          <Link href="/dashboard/contacts">
-            <Button variant="secondary" size="sm">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-          </Link>
-          <h2 className="text-2xl font-bold text-gray-900">Edit Contact</h2>
-        </div>
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-6">
-            <p className="text-red-800">{error}</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Check if user can delete (EDITOR or SUPER_ADMIN)
-  const canDelete = user?.role === 'EDITOR' || user?.role === 'SUPER_ADMIN';
+  // Filter groups by selected airline (for SUPER_ADMIN)
+  const filteredGroups = formData.airlineId
+    ? contactGroups.filter(g => g.airlineId === formData.airlineId)
+    : contactGroups;
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Link href="/dashboard/contacts">
-            <Button variant="secondary" size="sm">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-          </Link>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Edit Contact</h2>
-            {contact && (
-              <p className="text-gray-600 mt-1">
-                {contact.group.name} • {contact.airline?.name || 'No airline'}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Delete Button */}
-        {canDelete && (
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={handleDelete}
-            disabled={isDeleting || isSaving}
-          >
-            {isDeleting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Deleting...
-              </>
-            ) : (
-              <>
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete Contact
-              </>
-            )}
+      <div className="flex items-center space-x-4">
+        <Link href="/dashboard/contacts">
+          <Button variant="secondary" size="sm">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
           </Button>
-        )}
+        </Link>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Create New Contact</h2>
+          <p className="text-gray-600 mt-1">Add a new contact to your directory</p>
+        </div>
       </div>
 
       {/* Error Message */}
@@ -269,37 +209,59 @@ export default function EditContactPage() {
             <CardTitle>Contact Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Airline Information (Read-only) */}
-            {contact?.airline && (
-              <div className="pb-6 border-b bg-gray-50 -mx-6 -mt-6 px-6 pt-6 rounded-t-lg">
-                <Label>Airline</Label>
-                <div className="mt-2 flex items-center space-x-2">
-                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-700 font-medium">
-                    {contact.airline.name} ({contact.airline.code})
-                  </div>
-                  <span className="text-sm text-gray-500">
-                    (Cannot be changed)
-                  </span>
-                </div>
-                {user?.role === 'SUPER_ADMIN' && (
-                  <p className="text-sm text-amber-600 mt-2">
-                    ⚠️ To change the airline, please delete this contact and create a new one.
-                  </p>
-                )}
+            {/* Airline Selection (SUPER_ADMIN only) */}
+            {user?.role === 'SUPER_ADMIN' && (
+              <div className="pb-6 border-b">
+                <Label htmlFor="airlineId">
+                  Airline <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  id="airlineId"
+                  name="airlineId"
+                  value={formData.airlineId}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select an airline</option>
+                  {airlines.map((airline) => (
+                    <option key={airline.id} value={airline.id}>
+                      {airline.name} ({airline.code})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-sm text-gray-500 mt-1">
+                  Select the airline this contact belongs to
+                </p>
               </div>
             )}
 
-            {/* Group Information (Read-only) */}
+            {/* Contact Group Selection */}
             <div>
-              <Label>Contact Group</Label>
-              <div className="mt-2">
-                <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-gray-700">
-                  {contact?.group.name}
-                </div>
-                <p className="text-sm text-gray-500 mt-1">
-                  To move this contact to another group, delete and recreate it
+              <Label htmlFor="groupId">
+                Contact Group <span className="text-red-500">*</span>
+              </Label>
+              <select
+                id="groupId"
+                name="groupId"
+                value={formData.groupId}
+                onChange={handleInputChange}
+                required
+                disabled={user?.role === 'SUPER_ADMIN' && !formData.airlineId}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              >
+                <option value="">Select a contact group</option>
+                {filteredGroups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+              {user?.role === 'SUPER_ADMIN' && !formData.airlineId && (
+                <p className="text-sm text-amber-600 mt-1">
+                  Please select an airline first
                 </p>
-              </div>
+              )}
             </div>
 
             {/* Basic Information */}
@@ -476,6 +438,9 @@ export default function EditContactPage() {
                     onChange={handleInputChange}
                     min="0"
                   />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Lower numbers appear first
+                  </p>
                 </div>
 
                 <div>
@@ -497,20 +462,20 @@ export default function EditContactPage() {
             {/* Actions */}
             <div className="flex justify-end space-x-3 pt-6 border-t">
               <Link href="/dashboard/contacts">
-                <Button type="button" variant="secondary" disabled={isSaving || isDeleting}>
+                <Button type="button" variant="secondary" disabled={isSaving}>
                   Cancel
                 </Button>
               </Link>
-              <Button type="submit" disabled={isSaving || isDeleting}>
+              <Button type="submit" disabled={isSaving}>
                 {isSaving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
+                    Creating...
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4 mr-2" />
-                    Save Changes
+                    Create Contact
                   </>
                 )}
               </Button>

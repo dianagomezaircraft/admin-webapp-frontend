@@ -4,30 +4,68 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Plus, BookOpen, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, BookOpen, ChevronRight, Loader2, AlertCircle, Filter, X } from 'lucide-react';
 import { chaptersService, Chapter } from '@/lib/chapters';
+
+interface Airline {
+  id: string;
+  name: string;
+  code: string;
+  active: boolean;
+}
 
 export default function ManualsPage() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [filteredChapters, setFilteredChapters] = useState<Chapter[]>([]);
+  const [airlines, setAirlines] = useState<Airline[]>([]);
+  const [selectedAirlineId, setSelectedAirlineId] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadChapters();
+    loadData();
   }, []);
 
-  const loadChapters = async () => {
+  useEffect(() => {
+    filterChapters();
+  }, [selectedAirlineId, chapters]);
+
+  const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await chaptersService.getAll();
-      setChapters(data);
+      
+      const [chaptersData, airlinesData] = await Promise.all([
+        chaptersService.getAll(),
+        chaptersService.getAirlines(),
+      ]);
+      
+      setChapters(chaptersData);
+      setAirlines(airlinesData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load chapters');
-      console.error('Error loading chapters:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load data');
+      console.error('Error loading data:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const filterChapters = () => {
+    if (selectedAirlineId === 'all') {
+      setFilteredChapters(chapters);
+    } else {
+      setFilteredChapters(
+        chapters.filter(chapter => chapter.airlineId === selectedAirlineId)
+      );
+    }
+  };
+
+  const handleAirlineChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedAirlineId(e.target.value);
+  };
+
+  const clearFilter = () => {
+    setSelectedAirlineId('all');
   };
 
   const formatDate = (dateString: string) => {
@@ -42,6 +80,21 @@ export default function ManualsPage() {
     if (diffDays < 14) return '1 week ago';
     if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
     return date.toLocaleDateString();
+  };
+
+  const getAirlineName = (airlineId: string) => {
+    const airline = airlines.find(a => a.id === airlineId);
+    return airline ? airline.name : 'Unknown';
+  };
+
+  const getAirlineCode = (airlineId: string) => {
+    const airline = airlines.find(a => a.id === airlineId);
+    return airline ? airline.code : '';
+  };
+
+  const getChapterCount = (airlineId: string) => {
+    if (airlineId === 'all') return chapters.length;
+    return chapters.filter(c => c.airlineId === airlineId).length;
   };
 
   return (
@@ -59,6 +112,52 @@ export default function ManualsPage() {
           </Button>
         </Link>
       </div>
+
+      {/* Filter Section - Dropdown Version */}
+      {!loading && airlines.length > 0 && (
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <Filter className="w-5 h-5 text-gray-500" />
+            <label htmlFor="airline-filter" className="text-sm font-medium text-gray-700">
+              Filter by Airline:
+            </label>
+          </div>
+          
+          <select
+            id="airline-filter"
+            value={selectedAirlineId}
+            onChange={handleAirlineChange}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+          >
+            <option value="all">
+              All Airlines ({chapters.length})
+            </option>
+            {airlines.map((airline) => (
+              <option key={airline.id} value={airline.id}>
+                {airline.name} ({getChapterCount(airline.id)})
+              </option>
+            ))}
+          </select>
+
+          {selectedAirlineId !== 'all' && (
+            <button
+              onClick={clearFilter}
+              className="text-sm text-gray-600 hover:text-gray-900 flex items-center space-x-1"
+            >
+              <X className="w-4 h-4" />
+              <span>Clear</span>
+            </button>
+          )}
+
+          {selectedAirlineId !== 'all' && (
+            <div className="ml-auto">
+              <span className="text-sm text-gray-600">
+                Showing <span className="font-semibold text-gray-900">{filteredChapters.length}</span> chapters
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Loading State */}
       {loading && (
@@ -79,7 +178,7 @@ export default function ManualsPage() {
               </div>
             </div>
             <Button
-              onClick={loadChapters}
+              onClick={loadData}
               className="mt-4"
             >
               Try Again
@@ -88,7 +187,7 @@ export default function ManualsPage() {
         </Card>
       )}
 
-      {/* Empty State */}
+      {/* Empty State - No Chapters */}
       {!loading && !error && chapters.length === 0 && (
         <Card>
           <CardContent className="p-12 text-center">
@@ -105,19 +204,36 @@ export default function ManualsPage() {
         </Card>
       )}
 
+      {/* Empty State - No Results for Filter */}
+      {!loading && !error && chapters.length > 0 && filteredChapters.length === 0 && (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Filter className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">No chapters found</h3>
+            <p className="text-gray-600 mb-6">
+              No chapters found for {getAirlineName(selectedAirlineId)}
+            </p>
+            <Button onClick={clearFilter} variant="secondary">
+              <X className="w-4 h-4 mr-2" />
+              Clear Filter
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Chapters List */}
-      {!loading && !error && chapters.length > 0 && (
+      {!loading && !error && filteredChapters.length > 0 && (
         <div className="space-y-3">
-          {chapters.map((chapter) => (
+          {filteredChapters.map((chapter) => (
             <Link key={chapter.id} href={`/dashboard/manuals/${chapter.id}`}>
               <Card className="hover:shadow-md transition-shadow cursor-pointer">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-4 flex-1">
                       <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                         <BookOpen className="w-6 h-6 text-blue-600" />
                       </div>
-                      <div>
+                      <div className="flex-1">
                         <div className="flex items-center space-x-2">
                           <h3 className="font-semibold text-gray-900">{chapter.title}</h3>
                           {!chapter.active && (
@@ -130,6 +246,10 @@ export default function ManualsPage() {
                           <span className="text-sm text-gray-500">
                             Updated {formatDate(chapter.updatedAt)}
                           </span>
+                          <span className="text-xs text-gray-400">•</span>
+                          <span className="text-sm text-blue-600 font-medium">
+                            {getAirlineCode(chapter.airlineId)}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -139,6 +259,15 @@ export default function ManualsPage() {
               </Card>
             </Link>
           ))}
+        </div>
+      )}
+
+      {/* Results Summary */}
+      {!loading && !error && filteredChapters.length > 0 && (
+        <div className="text-center py-4">
+          <p className="text-sm text-gray-500">
+            Showing {filteredChapters.length} of {chapters.length} chapters
+          </p>
         </div>
       )}
     </div>

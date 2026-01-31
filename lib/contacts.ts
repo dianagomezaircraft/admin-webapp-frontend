@@ -3,63 +3,51 @@ import { fetchWithAuth } from './auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
-// Contact Group Interfaces
+export interface Airline {
+  id: string;
+  name: string;
+  code: string;
+}
+
 export interface ContactGroup {
   id: string;
   name: string;
-  description: string | null;
+  description?: string;
   order: number;
   active: boolean;
   airlineId: string;
+  airline: Airline;
+  contacts: Contact[];
   createdAt: string;
   updatedAt: string;
-  contacts: Contact[];
-  airline: {
-    id: string;
-    name: string;
-    code: string;
-  };
 }
 
-export interface CreateContactGroupData {
-  name: string;
-  description?: string;
-  order?: number;
-  active?: boolean;
-}
-
-export interface UpdateContactGroupData {
-  name?: string;
-  description?: string;
-  order?: number;
-  active?: boolean;
-}
-
-// Contact Interfaces
 export interface Contact {
   id: string;
   firstName: string;
   lastName: string;
-  title: string | null;
-  company: string | null;
-  phone: string | null;
-  email: string | null;
-  timezone: string | null;
-  avatar: string | null;
+  title?: string;
+  company?: string;
+  phone?: string;
+  email?: string;
+  timezone?: string;
+  avatar?: string;
   order: number;
   active: boolean;
   groupId: string;
-  metadata: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
+  airlineId: string;
+  metadata?: Record<string, string | number | boolean>;
   group: {
     id: string;
     name: string;
     airlineId: string;
   };
+  airline: Airline;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface CreateContactData {
+export interface CreateContactDto {
   firstName: string;
   lastName: string;
   title?: string;
@@ -69,11 +57,11 @@ export interface CreateContactData {
   timezone?: string;
   avatar?: string;
   order?: number;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, string | number | boolean>;
   active?: boolean;
 }
 
-export interface UpdateContactData {
+export interface UpdateContactDto {
   firstName?: string;
   lastName?: string;
   title?: string;
@@ -83,179 +71,152 @@ export interface UpdateContactData {
   timezone?: string;
   avatar?: string;
   order?: number;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, string | number | boolean>;
   active?: boolean;
 }
 
-// Response Interfaces
-interface ContactGroupsResponse {
-  success: boolean;
-  data: ContactGroup[];
-  count: number;
+export interface CreateContactGroupDto {
+  name: string;
+  description?: string;
+  order?: number;
+  active?: boolean;
+  airlineId?: string; // AGREGADO: Permitir pasar airlineId explícitamente para SUPER_ADMIN
 }
 
-interface ContactGroupResponse {
-  success: boolean;
-  data: ContactGroup;
-  message?: string;
+export interface UpdateContactGroupDto {
+  name?: string;
+  description?: string;
+  order?: number;
+  active?: boolean;
 }
 
-interface ContactsResponse {
-  success: boolean;
-  data: Contact[];
-  count: number;
-}
+class ContactsService {
+  // ============================================
+  // CONTACT GROUPS
+  // ============================================
 
-interface ContactResponse {
-  success: boolean;
-  data: Contact;
-  message?: string;
-}
-
-// Contact Groups Service
-export const contactGroupsService = {
-  async getAll(includeInactive?: boolean): Promise<ContactGroup[]> {
-    const params = new URLSearchParams();
-    if (includeInactive !== undefined) {
-      params.append('includeInactive', String(includeInactive));
-    }
-
-    const url = `${API_URL}/contacts/groups${params.toString() ? `?${params.toString()}` : ''}`;
-    const response = await fetchWithAuth(url);
-
+  async getAllGroups(includeInactive: boolean = false): Promise<ContactGroup[]> {
+    const params = includeInactive ? '?includeInactive=true' : '';
+    const response = await fetchWithAuth(`${API_URL}/contacts/groups${params}`);
+    
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to fetch contact groups');
+      throw new Error(error.error || 'Failed to load contact groups');
     }
+    
+    const data = await response.json();
+    return data.data;
+  }
 
-    const result: ContactGroupsResponse = await response.json();
-    return result.data;
-  },
-
-  async getById(id: string): Promise<ContactGroup> {
+  async getGroupById(id: string): Promise<ContactGroup> {
     const response = await fetchWithAuth(`${API_URL}/contacts/groups/${id}`);
-
+    
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to fetch contact group');
+      throw new Error(error.error || 'Failed to load contact group');
     }
+    
+    const data = await response.json();
+    return data.data;
+  }
 
-    const result: ContactGroupResponse = await response.json();
-    return result.data;
-  },
-
-  async create(data: CreateContactGroupData): Promise<ContactGroup> {
+  async createGroup(data: CreateContactGroupDto): Promise<ContactGroup> {
     const response = await fetchWithAuth(`${API_URL}/contacts/groups`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
-
+    
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to create contact group');
     }
-
-    const result: ContactGroupResponse = await response.json();
+    
+    const result = await response.json();
     return result.data;
-  },
+  }
 
-  async update(id: string, data: UpdateContactGroupData): Promise<ContactGroup> {
+  async updateGroup(id: string, data: UpdateContactGroupDto): Promise<ContactGroup> {
     const response = await fetchWithAuth(`${API_URL}/contacts/groups/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
-
+    
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to update contact group');
     }
-
-    const result: ContactGroupResponse = await response.json();
+    
+    const result = await response.json();
     return result.data;
-  },
+  }
 
-  async delete(id: string): Promise<void> {
+  async deleteGroup(id: string): Promise<void> {
     const response = await fetchWithAuth(`${API_URL}/contacts/groups/${id}`, {
       method: 'DELETE',
     });
-
+    
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to delete contact group');
     }
-  },
-};
+  }
 
-// Contacts Service
-export const contactsService = {
-  async getAllByGroup(groupId: string, includeInactive?: boolean): Promise<Contact[]> {
-    const params = new URLSearchParams();
-    if (includeInactive !== undefined) {
-      params.append('includeInactive', String(includeInactive));
-    }
-
-    const url = `${API_URL}/contacts/groups/${groupId}/contacts${params.toString() ? `?${params.toString()}` : ''}`;
-    const response = await fetchWithAuth(url);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to fetch contacts');
-    }
-
-    const result: ContactsResponse = await response.json();
-    return result.data;
-  },
+  // ============================================
+  // CONTACTS
+  // ============================================
 
   async getById(id: string): Promise<Contact> {
     const response = await fetchWithAuth(`${API_URL}/contacts/${id}`);
-
+    
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to fetch contact');
+      throw new Error(error.error || 'Failed to load contact');
     }
+    
+    const data = await response.json();
+    return data.data;
+  }
 
-    const result: ContactResponse = await response.json();
-    return result.data;
-  },
-
-  async create(groupId: string, data: CreateContactData): Promise<Contact> {
+  async create(groupId: string, data: CreateContactDto): Promise<Contact> {
     const response = await fetchWithAuth(`${API_URL}/contacts/groups/${groupId}/contacts`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
-
+    
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to create contact');
     }
-
-    const result: ContactResponse = await response.json();
+    
+    const result = await response.json();
     return result.data;
-  },
+  }
 
-  async update(id: string, data: UpdateContactData): Promise<Contact> {
+  async update(id: string, data: UpdateContactDto): Promise<Contact> {
     const response = await fetchWithAuth(`${API_URL}/contacts/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
-
+    
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to update contact');
     }
-
-    const result: ContactResponse = await response.json();
+    
+    const result = await response.json();
     return result.data;
-  },
+  }
 
   async delete(id: string): Promise<void> {
     const response = await fetchWithAuth(`${API_URL}/contacts/${id}`, {
       method: 'DELETE',
     });
-
+    
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to delete contact');
     }
-  },
-};
+  }
+}
+
+export const contactsService = new ContactsService();
