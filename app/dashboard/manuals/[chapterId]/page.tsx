@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronRight, Plus, Loader2, AlertCircle, Edit, Image as ImageIcon } from 'lucide-react';
+import { ChevronRight, Plus, Loader2, AlertCircle, Edit, Image as ImageIcon, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { use, useEffect, useState } from 'react';
 import { chaptersService, Chapter } from '@/lib/chapters';
 import { sectionsService, Section } from '@/lib/sections';
+import { useRouter } from 'next/navigation';
 
 export default function ChapterPage({ 
   params 
@@ -15,10 +16,13 @@ export default function ChapterPage({
   params: Promise<{ chapterId: string }> 
 }) {
   const unwrappedParams = use(params);
+  const router = useRouter();
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     loadChapterAndSections();
@@ -44,6 +48,25 @@ export default function ChapterPage({
       console.error('Error loading chapter:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!chapter) return;
+
+    try {
+      setDeleting(true);
+      await chaptersService.delete(chapter.id);
+      
+      // Redirect to chapters list after successful deletion
+      router.push('/dashboard/manuals');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete chapter';
+      setError(errorMessage);
+      console.error('Error deleting chapter:', err);
+      setShowDeleteConfirm(false);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -102,6 +125,59 @@ export default function ChapterPage({
         </Card>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardContent className="p-6">
+              <div className="flex items-start space-x-3 mb-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Delete Chapter</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Are you sure you want to delete &quot;{chapter?.title}&quot;? 
+                    {/* {sections.length > 0 && (
+                      <span className="block mt-1 font-medium text-red-600">
+                        This will also delete {sections.length} {sections.length === 1 ? 'section' : 'sections'}.
+                      </span>
+                    )} */}
+                    This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <div className="flex space-x-3 justify-end">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Content */}
       {!loading && !error && chapter && (
         <>
@@ -122,6 +198,14 @@ export default function ChapterPage({
               </p>
             </div>
             <div className="flex space-x-3">
+              <Button 
+                variant="secondary"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="text-red-600 hover:bg-red-50 border-red-200"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete
+              </Button>
               <Link href={`/dashboard/manuals/${unwrappedParams.chapterId}/edit`}>
                 <Button variant="secondary">
                   <Edit className="w-4 h-4 mr-2" />
