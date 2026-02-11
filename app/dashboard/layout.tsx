@@ -15,8 +15,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { authService } from '@/lib/auth';
-import { User } from '@/lib/users';
+import { authService, User } from '@/lib/auth';
 
 
 
