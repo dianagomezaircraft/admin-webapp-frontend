@@ -11,8 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { contactsService, ContactGroup } from '@/lib/contacts';
-import { authService } from '@/lib/auth';
-import { User } from '@/lib/users';
+import { authService, User } from '@/lib/auth';
 
 interface Airline {
   id: string;

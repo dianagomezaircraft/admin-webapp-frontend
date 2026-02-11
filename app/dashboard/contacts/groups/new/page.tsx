@@ -11,8 +11,8 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { contactsService } from '@/lib/contacts';
 import { airlinesService } from '@/lib/airlines';
-import { authService } from '@/lib/auth';
-import { User } from '@/lib/users';
+import { authService, User } from '@/lib/auth';
+// import { User } from '@/lib/users';
 
 interface Airline {
   id: string;
