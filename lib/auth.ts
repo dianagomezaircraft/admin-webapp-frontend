@@ -6,25 +6,58 @@ export interface LoginCredentials {
   password: string;
 }
 
-export interface AuthResponse {
-  success: boolean;
-  data: {
-    accessToken: string;
-    refreshToken: string;
-    user: {
-      id: string;
-      email: string;
-      firstName: string;
-      lastName: string;
-      role: string;
-      airlineId?: string;
-    };
+export interface User {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  airlineId?: string;
+  airline?: {
+    id: string;
+    name: string;
+    code: string;
+    logo?: string;
   };
 }
 
+export interface AuthData {
+  accessToken: string;
+  refreshToken: string;
+  user: User;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  data: AuthData;
+}
+
+export interface RefreshTokenResponse {
+  accessToken: string;
+  user: User;
+}
+
+// Queue to store pending requests while refreshing token
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value: string) => void;
+  reject: (reason?: Error) => void;
+}> = [];
+
+const processQueue = (error: Error | null, token: string | null = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else if (token) {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const response = await fetch(`${API_URL}/auth/login/`, {
+    const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -37,11 +70,18 @@ export const authService = {
       throw new Error(error.message || 'Login failed');
     }
 
-    return response.json();
+    const data: AuthResponse = await response.json();
+    
+    // Save auth data
+    if (data.success) {
+      this.saveAuthData(data.data);
+    }
+
+    return data;
   },
 
-  async refreshToken(refreshToken: string): Promise<AuthResponse> {
-    const response = await fetch(`${API_URL}/auth/refresh-token/`, {
+  async refreshToken(refreshToken: string): Promise<RefreshTokenResponse> {
+    const response = await fetch(`${API_URL}/auth/refresh`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -53,19 +93,22 @@ export const authService = {
       throw new Error('Token refresh failed');
     }
 
-    return response.json();
+    const data = await response.json();
+    return data.success ? data.data : data;
   },
 
   async logout(refreshToken?: string): Promise<void> {
+    const tokenToUse = refreshToken || this.getRefreshToken();
+    
     // Call backend logout endpoint if refresh token is provided
-    if (refreshToken) {
+    if (tokenToUse) {
       try {
         await fetch(`${API_URL}/auth/logout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ refreshToken }),
+          body: JSON.stringify({ refreshToken: tokenToUse }),
         });
       } catch (error) {
         console.error('Backend logout error:', error);
@@ -90,7 +133,7 @@ export const authService = {
     return localStorage.getItem('refreshToken');
   },
 
-  getUser() {
+  getUser(): User | null {
     const userStr = localStorage.getItem('user');
     return userStr ? JSON.parse(userStr) : null;
   },
@@ -99,47 +142,136 @@ export const authService = {
     return !!this.getAccessToken();
   },
 
-  saveAuthData(data: AuthResponse['data']) {
+  saveAuthData(data: AuthData): void {
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     localStorage.setItem('user', JSON.stringify(data.user));
   },
 };
 
-// Interceptor para agregar el token a las peticiones
-export async function fetchWithAuth(url: string, options: RequestInit = {}) {
+// Enhanced interceptor with automatic token refresh
+export async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
   const token = authService.getAccessToken();
   
-  const headers = {
+  const headers: HeadersInit = {
     ...options.headers,
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
   };
 
-  const response = await fetch(url, { ...options, headers });
+  let response = await fetch(url, { ...options, headers });
 
-  // Si el token expiró, intentar refrescarlo
+  // If token expired (401), try to refresh it
   if (response.status === 401) {
     const refreshToken = authService.getRefreshToken();
-    if (refreshToken) {
-      try {
-        const newAuth = await authService.refreshToken(refreshToken);
-        authService.saveAuthData(newAuth.data);
-        
-        // Reintentar la petición original
-        headers.Authorization = `Bearer ${newAuth.data.accessToken}`;
-        return fetch(url, { ...options, headers });
-      } catch (error) {
-        await authService.logout();
-        window.location.href = '/auth/login';
-        throw error;
-      }
-    } else {
-      // No refresh token available, redirect to login
+    
+    if (!refreshToken) {
+      // No refresh token, logout and redirect
       await authService.logout();
-      window.location.href = '/auth/login';
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth/login';
+      }
+      throw new Error('No refresh token available');
+    }
+
+    // If already refreshing, wait for it to complete
+    if (isRefreshing) {
+      return new Promise<Response>((resolve, reject) => {
+        failedQueue.push({
+          resolve: (token: string) => {
+            const newHeaders: HeadersInit = {
+              ...options.headers,
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            };
+            resolve(fetch(url, { ...options, headers: newHeaders }));
+          },
+          reject,
+        });
+      });
+    }
+
+    // Start refresh process
+    isRefreshing = true;
+
+    try {
+      // Refresh the token
+      const newAuth = await authService.refreshToken(refreshToken);
+      
+      // Save new tokens
+      authService.saveAuthData({
+        accessToken: newAuth.accessToken,
+        refreshToken: refreshToken, // Keep the same refresh token
+        user: newAuth.user,
+      });
+
+      // Process queued requests
+      processQueue(null, newAuth.accessToken);
+
+      // Retry the original request with new token
+      const retryHeaders: HeadersInit = {
+        ...options.headers,
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${newAuth.accessToken}`,
+      };
+      response = await fetch(url, { ...options, headers: retryHeaders });
+
+      return response;
+    } catch (error) {
+      // Refresh failed, logout
+      processQueue(error as Error, null);
+      await authService.logout();
+      
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth/login';
+      }
+      
+      throw error;
+    } finally {
+      isRefreshing = false;
     }
   }
 
   return response;
+}
+
+// Helper to decode JWT and check expiration
+export function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const exp = payload.exp * 1000; // Convert to milliseconds
+    return Date.now() >= exp;
+  } catch (error) {
+    return true;
+  }
+}
+
+// Proactive token refresh - call this periodically
+export async function refreshTokenIfNeeded(): Promise<void> {
+  const accessToken = authService.getAccessToken();
+  const refreshToken = authService.getRefreshToken();
+
+  if (!accessToken || !refreshToken) {
+    return;
+  }
+
+  // Check if token expires in less than 2 minutes
+  try {
+    const payload = JSON.parse(atob(accessToken.split('.')[1]));
+    const exp = payload.exp * 1000;
+    const timeUntilExpiry = exp - Date.now();
+    const twoMinutes = 2 * 60 * 1000;
+
+    if (timeUntilExpiry < twoMinutes && timeUntilExpiry > 0) {
+      console.log('Token expiring soon, refreshing...');
+      const newAuth = await authService.refreshToken(refreshToken);
+      authService.saveAuthData({
+        accessToken: newAuth.accessToken,
+        refreshToken: refreshToken,
+        user: newAuth.user,
+      });
+    }
+  } catch (error) {
+    console.error('Error checking token expiration:', error);
+  }
 }

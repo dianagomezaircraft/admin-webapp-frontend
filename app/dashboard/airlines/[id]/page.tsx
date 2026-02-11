@@ -187,6 +187,7 @@ export default function EditAirlinePage({
       // Preparar los datos para enviar al servidor
       const updateData = {
         name: formData.name,
+        code: formData.code,
         logo: logoUrl || undefined,
         branding: {
           primaryColor: formData.primaryColor,
@@ -386,9 +387,9 @@ export default function EditAirlinePage({
                 onChange={(e) => handleInputChange('code', e.target.value)}
                 maxLength={3}
                 required
-                disabled={true}
+                disabled={false}
                 placeholder="AAA"
-                title="Airline code cannot be changed after creation"
+                // title="Airline code cannot be changed after creation"
               />
             </div>
 
