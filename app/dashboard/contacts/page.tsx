@@ -8,15 +8,8 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { contactsService, ContactGroup, Contact } from '@/lib/contacts';
-import { authService } from '@/lib/auth';
+import { authService, User } from '@/lib/auth';
 import { airlinesService } from '@/lib/airlines';
-
-interface User {
-  id: string;
-  role: 'VIEWER' | 'EDITOR' | 'SUPER_ADMIN';
-  email?: string;
-  name?: string;
-}
 
 interface Airline {
   id: string;
