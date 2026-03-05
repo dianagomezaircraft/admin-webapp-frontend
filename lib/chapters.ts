@@ -1,4 +1,4 @@
-// lib/chapters.ts
+// lib/chapters.ts - UPDATED VERSION
 import { fetchWithAuth } from './auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
@@ -11,8 +11,34 @@ export interface Chapter {
   active: boolean;
   airlineId: string;
   imageUrl?: string;
+  
+  // ✨ Template fields
+  templateId?: string;
+  isTemplate: boolean;
+  templateVersion: number;
+  lastSyncedAt?: string;
+  
   createdAt: string;
   updatedAt: string;
+  
+  // Optional relations
+  airline?: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  template?: {
+    id: string;
+    title: string;
+    airline?: {
+      name: string;
+      code: string;
+    };
+  };
+  _count?: {
+    sections?: number;
+    forkedChapters?: number;
+  };
 }
 
 export interface Airline {
@@ -37,7 +63,7 @@ export interface CreateChapterData {
   description?: string;
   airlineId: string;
   active?: boolean;
-  imageUrl?: string; // ✅ Agregado
+  imageUrl?: string;
 }
 
 export interface UpdateChapterData {
@@ -45,7 +71,7 @@ export interface UpdateChapterData {
   description?: string;
   order?: number;
   active?: boolean;
-  imageUrl?: string; // ✅ Agregado
+  imageUrl?: string;
 }
 
 export const chaptersService = {

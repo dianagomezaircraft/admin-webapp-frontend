@@ -172,6 +172,73 @@ export const storageService = {
   },
 
   // ============================================
+  // CONTACT AVATARS
+  // ============================================
+
+  /**
+   * Sube el avatar de un contacto a Supabase Storage
+   * @param file - Archivo de imagen a subir
+   * @param contactId - ID del contacto
+   * @returns URL pública del avatar subido
+   */
+  async uploadContactAvatar(file: File, contactId: string): Promise<string> {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${contactId}-${Date.now()}.${fileExt}`;
+      const filePath = `contacts/avatars/${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from('chapter-images')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (error) {
+        console.error('Error uploading contact avatar:', error);
+        throw new Error('Failed to upload contact avatar');
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('chapter-images')
+        .getPublicUrl(filePath);
+
+      return urlData.publicUrl;
+    } catch (error) {
+      console.error('Error in uploadContactAvatar:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Elimina el avatar de un contacto de Supabase Storage
+   * @param avatarUrl - URL del avatar a eliminar
+   */
+  async deleteContactAvatar(avatarUrl: string): Promise<void> {
+    try {
+      const urlParts = avatarUrl.split('/chapter-images/');
+      if (urlParts.length !== 2) {
+        console.warn('Invalid contact avatar URL format');
+        return;
+      }
+
+      const filePath = urlParts[1];
+
+      const { error } = await supabase.storage
+        .from('chapter-images')
+        .remove([filePath]);
+
+      if (error) {
+        console.error('Error deleting contact avatar:', error);
+        throw new Error('Failed to delete contact avatar');
+      }
+    } catch (error) {
+      console.error('Error in deleteContactAvatar:', error);
+      throw error;
+    }
+  },
+
+  // ============================================
   // GENERIC IMAGE VALIDATION
   // ============================================
 

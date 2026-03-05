@@ -5,13 +5,15 @@ import { Suspense } from 'react';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Upload, X } from 'lucide-react'; // Añadido Upload y X
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { contactsService, ContactGroup } from '@/lib/contacts';
 import { authService, User } from '@/lib/auth';
+import { storageService } from '@/lib/storage'; // Importar storageService
+import Image from 'next/image'; // Importar Image
 
 interface Airline {
   id: string;
@@ -24,13 +26,17 @@ function CreateContactForm() {
   const searchParams = useSearchParams();
   const preselectedGroupId = searchParams.get('groupId');
 
-  // ... rest of your component code stays exactly the same ...
   const [user, setUser] = useState<User | null>(null);
   const [contactGroups, setContactGroups] = useState<ContactGroup[]>([]);
   const [airlines, setAirlines] = useState<Airline[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false); // Nuevo estado
   const [error, setError] = useState<string | null>(null);
+
+  // Nuevos estados para el avatar
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -40,7 +46,7 @@ function CreateContactForm() {
     phone: '',
     email: '',
     timezone: '',
-    avatar: '',
+    avatar: '', // Este campo ahora contendrá la URL de Supabase
     groupId: preselectedGroupId || '',
     airlineId: '',
     active: true,
@@ -54,6 +60,7 @@ function CreateContactForm() {
     ukMobile: '',
   });
 
+  // ... (mantener los useEffect y loadInitialData sin cambios)
   useEffect(() => {
     const currentUser = authService.getUser();
     setUser(currentUser);
@@ -109,6 +116,47 @@ function CreateContactForm() {
     setMetadata(prev => ({ ...prev, [name]: value }));
   };
 
+  /**
+   * Maneja la selección del archivo de avatar
+   */
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+    if (!validTypes.includes(file.type)) {
+      setError('Please select a valid image file (JPG, PNG, or WebP)');
+      return;
+    }
+
+    // Validar tamaño (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      setError('Image size must be less than 5MB');
+      return;
+    }
+
+    setAvatarFile(file);
+    setError(null);
+
+    // Crear preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setAvatarPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /**
+   * Remueve el avatar seleccionado
+   */
+  const handleRemoveAvatar = () => {
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setFormData(prev => ({ ...prev, avatar: '' }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -134,7 +182,8 @@ function CreateContactForm() {
       if (metadata.alternateMobile) metadataObj.alternate_mobile = metadata.alternateMobile;
       if (metadata.ukMobile) metadataObj.uk_mobile = metadata.ukMobile;
 
-      await contactsService.create(formData.groupId, {
+      // Preparar datos del contacto
+      const contactData = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         title: formData.title.trim() || undefined,
@@ -142,11 +191,27 @@ function CreateContactForm() {
         phone: formData.phone.trim() || undefined,
         email: formData.email.trim() || undefined,
         timezone: formData.timezone.trim() || undefined,
-        avatar: formData.avatar.trim() || undefined,
+        avatar: formData.avatar.trim() || undefined, // Se actualizará si hay archivo
         active: formData.active,
         order: parseInt(formData.order, 10),
         metadata: Object.keys(metadataObj).length > 0 ? metadataObj : undefined,
-      });
+      };
+
+      // Crear el contacto primero
+      const newContact = await contactsService.create(formData.groupId, contactData);
+
+      // Subir avatar si fue seleccionado
+      if (avatarFile && newContact.id) {
+        setIsUploadingAvatar(true);
+        
+        // Necesitarás crear esta función en tu storageService
+        const avatarUrl = await storageService.uploadContactAvatar(avatarFile, newContact.id);
+        
+        // Actualizar el contacto con la URL del avatar
+        await contactsService.update(formData.groupId, newContact.id, {
+          avatar: avatarUrl,
+        });
+      }
 
       router.push('/dashboard/contacts');
     } catch (err) {
@@ -154,6 +219,7 @@ function CreateContactForm() {
       setError(err instanceof Error ? err.message : 'Failed to create contact');
     } finally {
       setIsSaving(false);
+      setIsUploadingAvatar(false);
     }
   };
 
@@ -344,20 +410,62 @@ function CreateContactForm() {
                   />
                 </div>
 
+                {/* REEMPLAZAR el campo de Avatar URL con upload de imagen */}
                 <div>
-                  <Label htmlFor="avatar">Avatar URL</Label>
-                  <Input
-                    id="avatar"
-                    name="avatar"
-                    type="url"
-                    value={formData.avatar}
-                    onChange={handleInputChange}
-                    placeholder="https://example.com/avatar.jpg"
-                  />
+                  <Label>Avatar Photo</Label>
+                  
+                  {!avatarPreview ? (
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400 transition-colors">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/jpg"
+                        onChange={handleAvatarChange}
+                        className="hidden"
+                        id="avatar-upload"
+                        disabled={isSaving}
+                      />
+                      <label
+                        htmlFor="avatar-upload"
+                        className="cursor-pointer flex flex-col items-center"
+                      >
+                        <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                        <span className="text-sm text-gray-600">
+                          Click to upload
+                        </span>
+                        <span className="text-xs text-gray-500 mt-1">
+                          PNG, JPG, WebP (max. 5MB)
+                        </span>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="relative border border-gray-300 rounded-lg overflow-hidden bg-white">
+                      <div className="flex items-center justify-center p-4 bg-gray-50">
+                        <Image
+                          src={avatarPreview}
+                          alt="Avatar Preview"
+                          width={120}
+                          height={120}
+                          className="w-24 h-24 rounded-full object-cover"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveAvatar}
+                        className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition-colors"
+                        disabled={isSaving}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Optional: Upload a profile photo
+                  </p>
                 </div>
               </div>
             </div>
 
+            {/* ... resto del formulario sin cambios ... */}
             <div className="border-t pt-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -455,7 +563,7 @@ function CreateContactForm() {
                 {isSaving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating...
+                    {isUploadingAvatar ? 'Uploading avatar...' : 'Creating...'}
                   </>
                 ) : (
                   <>

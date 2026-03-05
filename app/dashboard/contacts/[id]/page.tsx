@@ -4,13 +4,15 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Trash2, Upload, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { contactsService, Contact } from '@/lib/contacts';
 import { authService, User } from '@/lib/auth';
+import { storageService } from '@/lib/storage';
+import Image from 'next/image';
 
 interface ContactMetadata {
   office_tel?: string;
@@ -34,7 +36,13 @@ export default function EditContactPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Nuevos estados para el avatar
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -91,6 +99,11 @@ export default function EditContactPage() {
         order: data.order,
       });
 
+      // Set current avatar URL for preview
+      if (data.avatar) {
+        setCurrentAvatarUrl(data.avatar);
+      }
+
       // Parse metadata
       if (data.metadata) {
         const contactMetadata = data.metadata as ContactMetadata;
@@ -119,6 +132,48 @@ export default function EditContactPage() {
     setMetadata(prev => ({ ...prev, [name]: value }));
   };
 
+  /**
+   * Maneja la selección del archivo de avatar
+   */
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+    if (!validTypes.includes(file.type)) {
+      setError('Please select a valid image file (JPG, PNG, or WebP)');
+      return;
+    }
+
+    // Validar tamaño (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      setError('Image size must be less than 5MB');
+      return;
+    }
+
+    setAvatarFile(file);
+    setError(null);
+
+    // Crear preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setAvatarPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /**
+   * Remueve el avatar seleccionado (tanto nuevo como existente)
+   */
+  const handleRemoveAvatar = () => {
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setCurrentAvatarUrl(null);
+    setFormData(prev => ({ ...prev, avatar: '' }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -132,7 +187,8 @@ export default function EditContactPage() {
       if (metadata.alternateMobile) metadataObj.alternate_mobile = metadata.alternateMobile;
       if (metadata.ukMobile) metadataObj.uk_mobile = metadata.ukMobile;
 
-      await contactsService.update(contactId, {
+      // Preparar datos de actualización
+      const updateData = {
         firstName: formData.firstName,
         lastName: formData.lastName,
         title: formData.title || undefined,
@@ -144,7 +200,29 @@ export default function EditContactPage() {
         active: formData.active,
         order: formData.order,
         metadata: Object.keys(metadataObj).length > 0 ? metadataObj : undefined,
-      });
+      };
+
+      // Si hay un nuevo archivo de avatar, subirlo primero
+      if (avatarFile) {
+        setIsUploadingAvatar(true);
+        
+        // Eliminar el avatar anterior si existe
+        if (currentAvatarUrl) {
+          try {
+            await storageService.deleteContactAvatar(currentAvatarUrl);
+          } catch (err) {
+            console.error('Error deleting old avatar:', err);
+            // Continuar aunque falle la eliminación
+          }
+        }
+        
+        // Subir el nuevo avatar
+        const avatarUrl = await storageService.uploadContactAvatar(avatarFile, contactId);
+        updateData.avatar = avatarUrl;
+      }
+
+      // Actualizar el contacto
+      await contactsService.update(contactId, updateData);
 
       router.push('/dashboard/contacts');
     } catch (err) {
@@ -152,6 +230,7 @@ export default function EditContactPage() {
       setError(err instanceof Error ? err.message : 'Failed to update contact');
     } finally {
       setIsSaving(false);
+      setIsUploadingAvatar(false);
     }
   };
 
@@ -164,6 +243,16 @@ export default function EditContactPage() {
     setError(null);
 
     try {
+      // Eliminar avatar si existe
+      if (currentAvatarUrl) {
+        try {
+          await storageService.deleteContactAvatar(currentAvatarUrl);
+        } catch (err) {
+          console.error('Error deleting avatar:', err);
+          // Continuar aunque falle la eliminación del avatar
+        }
+      }
+
       await contactsService.delete(contactId);
       router.push('/dashboard/contacts');
     } catch (err) {
@@ -207,6 +296,9 @@ export default function EditContactPage() {
 
   // Check if user can delete (EDITOR or SUPER_ADMIN)
   const canDelete = user?.role === 'EDITOR' || user?.role === 'SUPER_ADMIN';
+
+  // Determinar qué imagen mostrar en el preview
+  const displayAvatar = avatarPreview || currentAvatarUrl;
 
   return (
     <div className="space-y-6">
@@ -393,16 +485,74 @@ export default function EditContactPage() {
                   />
                 </div>
 
+                {/* REEMPLAZAR el campo de Avatar URL con upload de imagen */}
                 <div>
-                  <Label htmlFor="avatar">Avatar URL</Label>
-                  <Input
-                    id="avatar"
-                    name="avatar"
-                    type="url"
-                    value={formData.avatar}
-                    onChange={handleInputChange}
-                    placeholder="https://example.com/avatar.jpg"
-                  />
+                  <Label>Avatar Photo</Label>
+                  
+                  {!displayAvatar ? (
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400 transition-colors">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/jpg"
+                        onChange={handleAvatarChange}
+                        className="hidden"
+                        id="avatar-upload"
+                        disabled={isSaving}
+                      />
+                      <label
+                        htmlFor="avatar-upload"
+                        className="cursor-pointer flex flex-col items-center"
+                      >
+                        <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                        <span className="text-sm text-gray-600">
+                          Click to upload
+                        </span>
+                        <span className="text-xs text-gray-500 mt-1">
+                          PNG, JPG, WebP (max. 5MB)
+                        </span>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="relative border border-gray-300 rounded-lg overflow-hidden bg-white">
+                      <div className="flex items-center justify-center p-4 bg-gray-50">
+                        <Image
+                          src={displayAvatar}
+                          alt="Avatar Preview"
+                          width={120}
+                          height={120}
+                          className="w-24 h-24 rounded-full object-cover"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveAvatar}
+                        className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition-colors"
+                        disabled={isSaving}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                      {/* Botón para cambiar la imagen */}
+                      <div className="absolute bottom-2 right-2">
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/jpg"
+                          onChange={handleAvatarChange}
+                          className="hidden"
+                          id="avatar-change"
+                          disabled={isSaving}
+                        />
+                        <label
+                          htmlFor="avatar-change"
+                          className="cursor-pointer bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600 transition-colors inline-block"
+                        >
+                          Change
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    {avatarFile ? 'New photo selected - will be uploaded on save' : 'Optional: Upload a profile photo'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -504,7 +654,7 @@ export default function EditContactPage() {
                 {isSaving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
+                    {isUploadingAvatar ? 'Uploading avatar...' : 'Saving...'}
                   </>
                 ) : (
                   <>

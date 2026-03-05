@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { contactsService, ContactGroup, Contact } from '@/lib/contacts';
 import { authService, User } from '@/lib/auth';
 import { airlinesService } from '@/lib/airlines';
+import Image from 'next/image';
 
 interface Airline {
   id: string;
@@ -408,20 +409,23 @@ function ContactCard({ contact, groupId, deletingContactId, onDelete, canEdit }:
           <div className="flex items-center space-x-3 flex-1 min-w-0">
             {/* Avatar */}
             <div className="flex-shrink-0">
-              {contact.avatar ? (
-                <img
-                  src={contact.avatar}
-                  alt={`${contact.firstName} ${contact.lastName}`}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
-                  <span className="text-white font-semibold text-sm">
-                    {getInitials(contact.firstName, contact.lastName)}
-                  </span>
-                </div>
-              )}
-            </div>
+  {contact.avatar ? (
+    <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-gray-200">
+      <Image
+        src={contact.avatar}
+        alt={`${contact.firstName} ${contact.lastName}`}
+        fill
+        className="object-cover"
+      />
+    </div>
+  ) : (
+    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
+      <span className="text-white font-semibold text-sm">
+        {getInitials(contact.firstName, contact.lastName)}
+      </span>
+    </div>
+  )}
+</div>
 
             {/* Name */}
             <div className="min-w-0 flex-1">
