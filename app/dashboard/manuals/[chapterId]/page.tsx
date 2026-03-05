@@ -8,7 +8,12 @@ import { Button } from '@/components/ui/Button';
 import { use, useEffect, useState } from 'react';
 import { chaptersService, Chapter } from '@/lib/chapters';
 import { sectionsService, Section } from '@/lib/sections';
+import { authService, User } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import { TemplateBadge } from '@/components/templates/TemplateBadge';
+import { TemplateUpdateAlert } from '@/components/templates/TemplateUpdateAlert';
+import { ReviewUpdatesModal } from '@/components/templates/ReviewUpdatesModal';
+import { MarkAsTemplateButton } from '@/components/templates/MarkAsTemplateButton';
 
 export default function ChapterPage({ 
   params 
@@ -17,14 +22,24 @@ export default function ChapterPage({
 }) {
   const unwrappedParams = use(params);
   const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   useEffect(() => {
+    const currentUser = authService.getUser();
+    setUser(currentUser);
+    
+    if (!currentUser) {
+      router.push('/auth/login');
+      return;
+    }
+
     loadChapterAndSections();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unwrappedParams.chapterId]);
@@ -138,11 +153,6 @@ export default function ChapterPage({
                   <h3 className="text-lg font-semibold text-gray-900">Delete Chapter</h3>
                   <p className="text-sm text-gray-600 mt-1">
                     Are you sure you want to delete &quot;{chapter?.title}&quot;? 
-                    {/* {sections.length > 0 && (
-                      <span className="block mt-1 font-medium text-red-600">
-                        This will also delete {sections.length} {sections.length === 1 ? 'section' : 'sections'}.
-                      </span>
-                    )} */}
                     This action cannot be undone.
                   </p>
                 </div>
@@ -181,11 +191,25 @@ export default function ChapterPage({
       {/* Content */}
       {!loading && !error && chapter && (
         <>
+          {/* Template Update Alert - Show ONLY if chapter is forked */}
+          {chapter.templateId && (
+            <TemplateUpdateAlert 
+              chapterId={chapter.id}
+              onReviewClick={() => setShowReviewModal(true)}
+            />
+          )}
+
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="text-2xl font-bold text-gray-900">{chapter.title}</h2>
+                {/* Template Badge */}
+                <TemplateBadge 
+                  isTemplate={chapter.isTemplate}
+                  isForked={!!chapter.templateId}
+                  templateName={chapter.template?.title}
+                />
                 {!chapter.active && (
                   <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded">
                     Inactive
@@ -198,6 +222,16 @@ export default function ChapterPage({
               </p>
             </div>
             <div className="flex space-x-3">
+              {/* ✨ Mark as Template Button (SUPER_ADMIN only) */}
+              {user?.role === 'SUPER_ADMIN' && (
+                <MarkAsTemplateButton
+                  chapterId={chapter.id}
+                  isTemplate={chapter.isTemplate}
+                  isForked={!!chapter.templateId}
+                  onSuccess={loadChapterAndSections}
+                />
+              )}
+              
               <Button 
                 variant="secondary"
                 onClick={() => setShowDeleteConfirm(true)}
@@ -336,6 +370,18 @@ export default function ChapterPage({
             </div>
           )}
         </>
+      )}
+
+      {/* Review Updates Modal */}
+      {showReviewModal && chapter && (
+        <ReviewUpdatesModal
+          chapterId={chapter.id}
+          onClose={() => setShowReviewModal(false)}
+          onSuccess={() => {
+            setShowReviewModal(false);
+            loadChapterAndSections();
+          }}
+        />
       )}
     </div>
   );
