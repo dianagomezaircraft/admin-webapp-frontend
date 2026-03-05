@@ -12,7 +12,8 @@ import {
   Menu,
   X,
   Loader2,
-  MessageSquare
+  MessageSquare,
+  BookCopy,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { authService, User } from '@/lib/auth';
@@ -26,6 +27,7 @@ const navigation = [
   { name: 'Contacts', href: '/dashboard/contacts', icon: MessageSquare },
   { name: 'Manuals', href: '/dashboard/manuals', icon: BookOpen },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
+  { name: 'Templates', href: '/dashboard/templates', icon: BookCopy  },
 ];
 
 export default function DashboardLayout({

@@ -208,9 +208,12 @@ function CreateContactForm() {
         const avatarUrl = await storageService.uploadContactAvatar(avatarFile, newContact.id);
         
         // Actualizar el contacto con la URL del avatar
-        await contactsService.update(formData.groupId, newContact.id, {
+        await contactsService.update(newContact.id, {
           avatar: avatarUrl,
         });
+        // await contactsService.update(formData.groupId, newContact.id, {
+        //   avatar: avatarUrl,
+        // });
       }
 
       router.push('/dashboard/contacts');
