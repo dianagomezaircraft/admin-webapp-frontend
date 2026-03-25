@@ -232,6 +232,7 @@ export default function ChapterPage({
                 />
               )}
               
+              
               <Button 
                 variant="secondary"
                 onClick={() => setShowDeleteConfirm(true)}

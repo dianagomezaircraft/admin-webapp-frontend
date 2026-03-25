@@ -6,7 +6,22 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 // ============================================
 // TYPES & INTERFACES
 // ============================================
+export interface ForkSyncStatus {
+  id: string;
+  title: string;
+  airline: { id: string; name: string; code: string };
+  forkVersion: number;
+  templateVersion: number;
+  isOutdated: boolean;
+  lastSyncedAt?: string;
+}
 
+export interface TemplateSyncData {
+  template: { id: string; title: string; templateVersion: number };
+  forks: ForkSyncStatus[];
+  outdatedCount: number;
+  totalForks: number;
+}
 export interface TemplateChapter {
   id: string;
   title: string;
@@ -232,4 +247,36 @@ export const templatesService = {
     const result = await response.json();
     return result.data;
   },
+
+  async getTemplateSyncStatus(templateId: string): Promise<TemplateSyncData> {
+  const response = await fetchWithAuth(
+    `${API_URL}/templates/${templateId}/sync-status`
+  );
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch sync status');
+  }
+  const result = await response.json();
+  return result.data;
+  },
+
+  async pushToAllForks(
+  templateId: string,
+  forkIds?: string[]
+): Promise<{ succeeded: string[]; failed: { forkId: string; error: string }[] }> {
+  const response = await fetchWithAuth(
+    `${API_URL}/templates/${templateId}/push-to-forks`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ forkIds }),
+    }
+  );
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to push updates');
+  }
+  const result = await response.json();
+  return result.data;
+},
+  
 };

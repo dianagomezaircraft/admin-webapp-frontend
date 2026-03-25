@@ -8,27 +8,31 @@ import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { templatesService, type TemplateChapter } from '@/lib/templates';
-import { chaptersService, type Airline } from '@/lib/chapters';
+import { chaptersService, type Chapter, type Airline } from '@/lib/chapters';
 import { authService, type User } from '@/lib/auth';
 import { ForkTemplateModal } from '@/components/templates/ForkTemplateModal';
+import { MarkAsTemplateModal } from '@/components/templates/MarkAsTemplateModal';
+import { BulkForkTemplatesModal } from '@/components/templates/BulkForkTemplatesModal';
+import { TemplateSyncPanel } from '@/components/templates/TemplateSyncPanel';
 
 export default function TemplatesPage() {
   const [user, setUser] = useState<User | null>(null);
   const [templates, setTemplates] = useState<TemplateChapter[]>([]);
   const [airlines, setAirlines] = useState<Airline[]>([]);
+  const [allChapters, setAllChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateChapter | null>(null);
+  const [showMarkAsTemplate, setShowMarkAsTemplate] = useState(false);
+  const [showBulkFork, setShowBulkFork] = useState(false);
 
   useEffect(() => {
     const currentUser = authService.getUser();
     setUser(currentUser);
-    
     if (!currentUser) {
       window.location.href = '/auth/login';
       return;
     }
-
     loadData(currentUser);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -38,17 +42,18 @@ export default function TemplatesPage() {
       setIsLoading(true);
       setError(null);
 
-      // Load templates
       const templatesData = await templatesService.getAllTemplates();
       setTemplates(templatesData);
 
-      // Load airlines if SUPER_ADMIN
       if (currentUser.role === 'SUPER_ADMIN') {
-        const airlinesData = await chaptersService.getAirlines();
-        setAirlines(airlinesData.filter(a => a.active));
+        const [airlinesData, chaptersData] = await Promise.all([
+          chaptersService.getAirlines(),
+          chaptersService.getAll(undefined, true),
+        ]);
+        setAirlines(airlinesData.filter((a) => a.active));
+        setAllChapters(chaptersData);
       }
     } catch (err) {
-      console.error('Error loading templates:', err);
       setError(err instanceof Error ? err.message : 'Failed to load templates');
     } finally {
       setIsLoading(false);
@@ -57,19 +62,27 @@ export default function TemplatesPage() {
 
   const handleForkSuccess = () => {
     setSelectedTemplate(null);
-    if (user) {
-      loadData(user);
-    }
+    if (user) loadData(user);
+  };
+
+  const handleMarkAsTemplateSuccess = () => {
+    setShowMarkAsTemplate(false);
+    if (user) loadData(user);
+  };
+
+  const handleBulkForkSuccess = () => {
+    if (user) loadData(user);
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
     });
   };
+
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   return (
     <div className="space-y-6">
@@ -81,14 +94,30 @@ export default function TemplatesPage() {
             Browse and fork templates to quickly set up manuals
           </p>
         </div>
-        <Link href="/dashboard/manuals">
-          <Button variant="secondary">
-            Back to Manuals
-          </Button>
-        </Link>
+        <div className="flex items-center space-x-3">
+          {!isLoading && templates.length > 0 && (
+            <Button onClick={() => setShowBulkFork(true)} disabled={isLoading}>
+              <GitFork className="w-4 h-4 mr-2" />
+              Fork Multiple
+            </Button>
+          )}
+          {isSuperAdmin && (
+            <Button
+              onClick={() => setShowMarkAsTemplate(true)}
+              variant="secondary"
+              disabled={isLoading}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Mark as Template
+            </Button>
+          )}
+          <Link href="/dashboard/manuals">
+            <Button variant="secondary">Back to Manuals</Button>
+          </Link>
+        </div>
       </div>
 
-      {/* Error State */}
+      {/* Error */}
       {error && (
         <Card className="border-red-200 bg-red-50">
           <CardContent className="p-4">
@@ -97,7 +126,7 @@ export default function TemplatesPage() {
         </Card>
       )}
 
-      {/* Loading State */}
+      {/* Loading */}
       {isLoading && (
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
@@ -107,6 +136,15 @@ export default function TemplatesPage() {
         </div>
       )}
 
+      {/* ── SUPER_ADMIN: Sync Status Panel ── */}
+      {!isLoading && isSuperAdmin && templates.length > 0 && (
+        <Card>
+          <CardContent className="p-5">
+            <TemplateSyncPanel templates={templates} />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Empty State */}
       {!isLoading && templates.length === 0 && (
         <Card>
@@ -114,10 +152,18 @@ export default function TemplatesPage() {
             <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
               <FileCode className="w-6 h-6 text-gray-400" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No templates available</h3>
-            <p className="text-gray-600">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              No templates available
+            </h3>
+            <p className="text-gray-600 mb-6">
               Templates will appear here once they are created
             </p>
+            {isSuperAdmin && (
+              <Button onClick={() => setShowMarkAsTemplate(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Mark Chapters as Templates
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -128,7 +174,6 @@ export default function TemplatesPage() {
           {templates.map((template) => (
             <Card key={template.id} className="hover:shadow-lg transition-shadow">
               <CardContent className="p-0">
-                {/* Template Image */}
                 {template.imageUrl ? (
                   <div className="relative w-full h-40 bg-gray-100">
                     <Image
@@ -144,7 +189,6 @@ export default function TemplatesPage() {
                   </div>
                 )}
 
-                {/* Template Info */}
                 <div className="p-5">
                   <div className="flex items-start justify-between mb-3">
                     <h3 className="font-semibold text-gray-900 line-clamp-2 flex-1">
@@ -164,33 +208,23 @@ export default function TemplatesPage() {
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Source:</span>
-                      <span className="font-medium text-gray-900">
-                        {template.airline.name}
-                      </span>
+                      <span className="font-medium text-gray-900">{template.airline.name}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Sections:</span>
-                      <span className="font-medium text-gray-900">
-                        {template._count?.sections || 0}
-                      </span>
+                      <span className="font-medium text-gray-900">{template._count?.sections || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Forks:</span>
-                      <span className="font-medium text-gray-900">
-                        {template._count?.forkedChapters || 0}
-                      </span>
+                      <span className="font-medium text-gray-900">{template._count?.forkedChapters || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Version:</span>
-                      <span className="font-medium text-gray-900">
-                        v{template.templateVersion}
-                      </span>
+                      <span className="font-medium text-gray-900">v{template.templateVersion}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Updated:</span>
-                      <span className="font-medium text-gray-900">
-                        {formatDate(template.updatedAt)}
-                      </span>
+                      <span className="font-medium text-gray-900">{formatDate(template.updatedAt)}</span>
                     </div>
                   </div>
 
@@ -198,9 +232,10 @@ export default function TemplatesPage() {
                     onClick={() => setSelectedTemplate(template)}
                     className="w-full"
                     size="sm"
+                    variant="secondary"
                   >
                     <GitFork className="w-4 h-4 mr-2" />
-                    Fork Template
+                    Fork
                   </Button>
                 </div>
               </CardContent>
@@ -209,13 +244,31 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* Fork Modal */}
+      {/* Modals */}
       {selectedTemplate && (
         <ForkTemplateModal
           template={selectedTemplate}
-          airlines={user?.role === 'SUPER_ADMIN' ? airlines : undefined}
+          airlines={isSuperAdmin ? airlines : undefined}
           onClose={() => setSelectedTemplate(null)}
           onSuccess={handleForkSuccess}
+        />
+      )}
+
+      {showMarkAsTemplate && isSuperAdmin && (
+        <MarkAsTemplateModal
+          chapters={allChapters}
+          onClose={() => setShowMarkAsTemplate(false)}
+          onSuccess={handleMarkAsTemplateSuccess}
+        />
+      )}
+
+      {showBulkFork && (
+        <BulkForkTemplatesModal
+          templates={templates}
+          airlines={isSuperAdmin ? airlines : undefined}
+          isSuperAdmin={isSuperAdmin}
+          onClose={() => setShowBulkFork(false)}
+          onSuccess={handleBulkForkSuccess}
         />
       )}
     </div>

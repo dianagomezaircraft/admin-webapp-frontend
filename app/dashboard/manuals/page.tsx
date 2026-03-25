@@ -6,6 +6,8 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Plus, BookOpen, ChevronRight, Loader2, AlertCircle, Filter, X } from 'lucide-react';
 import { chaptersService, Chapter } from '@/lib/chapters';
+import { favoritesService } from '@/lib/favorites';
+import { FavoriteButton } from '@/components/ui/FavoriteButton';
 
 interface Airline {
   id: string;
@@ -18,6 +20,7 @@ export default function ManualsPage() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [filteredChapters, setFilteredChapters] = useState<Chapter[]>([]);
   const [airlines, setAirlines] = useState<Airline[]>([]);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [selectedAirlineId, setSelectedAirlineId] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,20 +31,23 @@ export default function ManualsPage() {
 
   useEffect(() => {
     filterChapters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAirlineId, chapters]);
 
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      const [chaptersData, airlinesData] = await Promise.all([
+
+      const [chaptersData, airlinesData, favoritesData] = await Promise.all([
         chaptersService.getAll(),
         chaptersService.getAirlines(),
+        favoritesService.getIds(),
       ]);
-      
+
       setChapters(chaptersData);
       setAirlines(airlinesData);
+      setFavorites(favoritesData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
       console.error('Error loading data:', err);
@@ -55,9 +61,22 @@ export default function ManualsPage() {
       setFilteredChapters(chapters);
     } else {
       setFilteredChapters(
-        chapters.filter(chapter => chapter.airlineId === selectedAirlineId)
+        chapters.filter((chapter) => chapter.airlineId === selectedAirlineId)
       );
     }
+  };
+
+  /**
+   * Called by FavoriteButton after a successful API toggle.
+   * Updates the local `favorites` string[] so the heart state stays
+   * in sync without a full page reload.
+   */
+  const handleFavoriteToggle = (chapterId: string, nowFavorited: boolean) => {
+    setFavorites((prev) =>
+      nowFavorited
+        ? [...prev, chapterId]           // add
+        : prev.filter((id) => id !== chapterId) // remove
+    );
   };
 
   const handleAirlineChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -71,9 +90,9 @@ export default function ManualsPage() {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
+    const diffDays = Math.floor(
+      Math.abs(now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
+    );
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return `${diffDays} days ago`;
@@ -82,20 +101,16 @@ export default function ManualsPage() {
     return date.toLocaleDateString();
   };
 
-  const getAirlineName = (airlineId: string) => {
-    const airline = airlines.find(a => a.id === airlineId);
-    return airline ? airline.name : 'Unknown';
-  };
+  const getAirlineName = (airlineId: string) =>
+    airlines.find((a) => a.id === airlineId)?.name ?? 'Unknown';
 
-  const getAirlineCode = (airlineId: string) => {
-    const airline = airlines.find(a => a.id === airlineId);
-    return airline ? airline.code : '';
-  };
+  const getAirlineCode = (airlineId: string) =>
+    airlines.find((a) => a.id === airlineId)?.code ?? '';
 
-  const getChapterCount = (airlineId: string) => {
-    if (airlineId === 'all') return chapters.length;
-    return chapters.filter(c => c.airlineId === airlineId).length;
-  };
+  const getChapterCount = (airlineId: string) =>
+    airlineId === 'all'
+      ? chapters.length
+      : chapters.filter((c) => c.airlineId === airlineId).length;
 
   return (
     <div className="space-y-6">
@@ -113,25 +128,27 @@ export default function ManualsPage() {
         </Link>
       </div>
 
-      {/* Filter Section - Dropdown Version */}
+      {/* Filter */}
       {!loading && airlines.length > 0 && (
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <Filter className="w-5 h-5 text-gray-500" />
-            <label htmlFor="airline-filter" className="text-sm font-medium text-gray-700">
+            <label
+              htmlFor="airline-filter"
+              className="text-sm font-medium text-gray-700"
+            >
               Filter by Airline:
             </label>
           </div>
-          
+
           <select
             id="airline-filter"
             value={selectedAirlineId}
             onChange={handleAirlineChange}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2
+                       focus:ring-blue-500 focus:border-transparent text-sm"
           >
-            <option value="all">
-              All Airlines ({chapters.length})
-            </option>
+            <option value="all">All Airlines ({chapters.length})</option>
             {airlines.map((airline) => (
               <option key={airline.id} value={airline.id}>
                 {airline.name} ({getChapterCount(airline.id)})
@@ -152,21 +169,25 @@ export default function ManualsPage() {
           {selectedAirlineId !== 'all' && (
             <div className="ml-auto">
               <span className="text-sm text-gray-600">
-                Showing <span className="font-semibold text-gray-900">{filteredChapters.length}</span> chapters
+                Showing{' '}
+                <span className="font-semibold text-gray-900">
+                  {filteredChapters.length}
+                </span>{' '}
+                chapters
               </span>
             </div>
           )}
         </div>
       )}
 
-      {/* Loading State */}
+      {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
         </div>
       )}
 
-      {/* Error State */}
+      {/* Error */}
       {error && (
         <Card className="border-red-200 bg-red-50">
           <CardContent className="p-6">
@@ -177,23 +198,22 @@ export default function ManualsPage() {
                 <p className="text-sm text-red-700 mt-1">{error}</p>
               </div>
             </div>
-            <Button
-              onClick={loadData}
-              className="mt-4"
-            >
+            <Button onClick={loadData} className="mt-4">
               Try Again
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Empty State - No Chapters */}
+      {/* Empty — no chapters */}
       {!loading && !error && chapters.length === 0 && (
         <Card>
           <CardContent className="p-12 text-center">
             <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No chapters yet</h3>
-            <p className="text-gray-600 mb-6">Get started by creating your first manual chapter</p>
+            <p className="text-gray-600 mb-6">
+              Get started by creating your first manual chapter
+            </p>
             <Link href="/dashboard/manuals/new">
               <Button>
                 <Plus className="w-4 h-4 mr-2" />
@@ -204,7 +224,7 @@ export default function ManualsPage() {
         </Card>
       )}
 
-      {/* Empty State - No Results for Filter */}
+      {/* Empty — filter has no results */}
       {!loading && !error && chapters.length > 0 && filteredChapters.length === 0 && (
         <Card>
           <CardContent className="p-12 text-center">
@@ -221,7 +241,7 @@ export default function ManualsPage() {
         </Card>
       )}
 
-      {/* Chapters List */}
+      {/* Chapters list */}
       {!loading && !error && filteredChapters.length > 0 && (
         <div className="space-y-3">
           {filteredChapters.map((chapter) => (
@@ -233,6 +253,7 @@ export default function ManualsPage() {
                       <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                         <BookOpen className="w-6 h-6 text-blue-600" />
                       </div>
+
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
                           <h3 className="font-semibold text-gray-900">{chapter.title}</h3>
@@ -252,8 +273,16 @@ export default function ManualsPage() {
                           </span>
                         </div>
                       </div>
+
+                      {/* ✅ FavoriteButton with working toggle handler */}
+                      <FavoriteButton
+                        chapterId={chapter.id}
+                        isFavorited={favorites.includes(chapter.id)}
+                        onToggle={handleFavoriteToggle}
+                      />
                     </div>
-                    <ChevronRight className="w-5 h-5 text-gray-400" />
+
+                    <ChevronRight className="w-5 h-5 text-gray-400 ml-3 flex-shrink-0" />
                   </div>
                 </CardContent>
               </Card>
@@ -262,7 +291,7 @@ export default function ManualsPage() {
         </div>
       )}
 
-      {/* Results Summary */}
+      {/* Results summary */}
       {!loading && !error && filteredChapters.length > 0 && (
         <div className="text-center py-4">
           <p className="text-sm text-gray-500">
